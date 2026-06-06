@@ -34,6 +34,7 @@ type DatabaseConfig struct {
 
 type RedisConfig struct {
 	Addr string `mapstructure:"addr"`
+	Password string `mapstructure:"password"`
 }
 
 
@@ -81,6 +82,7 @@ func LoadConfig() (*Config, error) {
 	v.BindEnv("database.name", "POSTGRES_DB")
 
 	v.BindEnv("redis.addr", "REDIS_ADDR")
+	v.BindEnv("redis.password","REDIS_PASSWORD")
 
 	v.BindEnv("jwt.access_token_secret", "ACCESS_SECRET")
 	v.BindEnv("jwt.refresh_token_secret", "REFRESH_SECRET")
@@ -121,6 +123,7 @@ func validate(cfg *Config) error {
 		{cfg.Database.Name,     "POSTGRES_DB"},
 		{cfg.Database.Port,     "POSTGRES_PORT"},
 		{cfg.Redis.Addr,        "REDIS_ADDR"},
+		// {cfg.Redis.Password,        "REDIS_PASSWORD"},
 		{cfg.Jwt.AccessTokenSecret, "ACCESS_SECRET"},
 		{cfg.Jwt.RefreshTokenSecret, "REFRESH_SECRET"},
 	}

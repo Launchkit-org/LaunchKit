@@ -20,7 +20,7 @@ func NewLogger(cfg *config.LogConfig) zerolog.Logger {
 	var writers []io.Writer
 	writers = append(writers, consoleWriter)
 
-	// Only adds file writer if a file path is configured
+	// Only adds file writer if a file path is configured from yaml
 	if cfg.File != "" {
 		if err := os.MkdirAll(filepath.Dir(cfg.File), 0755); err != nil {
 			panic("Failed to create log directory: " + err.Error())
