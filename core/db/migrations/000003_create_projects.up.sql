@@ -1,6 +1,7 @@
 CREATE TABLE projects (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid()
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     owner_address VARCHAR(42) NOT NULL REFERENCES users(wallet_address),
+    name VARCHAR(200) NOT NULL,
     description TEXT,
     logo_url TEXT,
     website_url TEXT,
