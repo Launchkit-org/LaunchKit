@@ -1,6 +1,6 @@
-module github.com/Lauchkit/LaunchKit/shared
+module github.com/Launchkit-org/LaunchKit/shared
 
-go 1.25.5
+go 1.26.4
 
 require (
 	github.com/bytedance/sonic v1.15.2
