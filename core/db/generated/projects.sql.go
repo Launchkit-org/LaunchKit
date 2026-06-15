@@ -13,152 +13,141 @@ import (
 )
 
 const createProject = `-- name: CreateProject :one
-INSERT INTO projects (owner_address, name, description, logo_url, website_url, twitter_url, discord_url, token_contract, chain, treasury_wallet)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-RETURNING id, owner_address, name, description, logo_url, website_url, twitter_url, discord_url, token_contract, chain, treasury_wallet, api_key, created_at, updated_at
+INSERT INTO projects (
+    company_name, employee_count, discovery_source,
+    name, slug, description, logo_url, website_url,
+    twitter_handle, discord_invite_link,
+    treasury_wallet, blockchain, environment,
+    token_address, token_name, token_symbol
+) VALUES (
+    $1, $2, $3,
+    $4, $5, $6, $7, $8,
+    $9, $10,
+    $11, $12, $13,
+    $14, $15, $16
+)
+RETURNING id, company_name, employee_count, discovery_source, name, slug, description, logo_url, website_url, twitter_handle, discord_invite_link, treasury_wallet, blockchain, environment, token_address, token_name, token_symbol, created_at, updated_at
 `
 
 type CreateProjectParams struct {
-	OwnerAddress   string         `json:"owner_address"`
-	Name           string         `json:"name"`
-	Description    sql.NullString `json:"description"`
-	LogoUrl        sql.NullString `json:"logo_url"`
-	WebsiteUrl     sql.NullString `json:"website_url"`
-	TwitterUrl     sql.NullString `json:"twitter_url"`
-	DiscordUrl     sql.NullString `json:"discord_url"`
-	TokenContract  string         `json:"token_contract"`
-	Chain          string         `json:"chain"`
-	TreasuryWallet string         `json:"treasury_wallet"`
+	CompanyName       string         `json:"company_name"`
+	EmployeeCount     sql.NullString `json:"employee_count"`
+	DiscoverySource   sql.NullString `json:"discovery_source"`
+	Name              string         `json:"name"`
+	Slug              string         `json:"slug"`
+	Description       sql.NullString `json:"description"`
+	LogoUrl           sql.NullString `json:"logo_url"`
+	WebsiteUrl        sql.NullString `json:"website_url"`
+	TwitterHandle     sql.NullString `json:"twitter_handle"`
+	DiscordInviteLink sql.NullString `json:"discord_invite_link"`
+	TreasuryWallet    string         `json:"treasury_wallet"`
+	Blockchain        string         `json:"blockchain"`
+	Environment       string         `json:"environment"`
+	TokenAddress      string         `json:"token_address"`
+	TokenName         sql.NullString `json:"token_name"`
+	TokenSymbol       sql.NullString `json:"token_symbol"`
 }
 
 func (q *Queries) CreateProject(ctx context.Context, arg CreateProjectParams) (Project, error) {
 	row := q.db.QueryRowContext(ctx, createProject,
-		arg.OwnerAddress,
+		arg.CompanyName,
+		arg.EmployeeCount,
+		arg.DiscoverySource,
 		arg.Name,
+		arg.Slug,
 		arg.Description,
 		arg.LogoUrl,
 		arg.WebsiteUrl,
-		arg.TwitterUrl,
-		arg.DiscordUrl,
-		arg.TokenContract,
-		arg.Chain,
+		arg.TwitterHandle,
+		arg.DiscordInviteLink,
 		arg.TreasuryWallet,
+		arg.Blockchain,
+		arg.Environment,
+		arg.TokenAddress,
+		arg.TokenName,
+		arg.TokenSymbol,
 	)
 	var i Project
 	err := row.Scan(
 		&i.ID,
-		&i.OwnerAddress,
+		&i.CompanyName,
+		&i.EmployeeCount,
+		&i.DiscoverySource,
 		&i.Name,
+		&i.Slug,
 		&i.Description,
 		&i.LogoUrl,
 		&i.WebsiteUrl,
-		&i.TwitterUrl,
-		&i.DiscordUrl,
-		&i.TokenContract,
-		&i.Chain,
+		&i.TwitterHandle,
+		&i.DiscordInviteLink,
 		&i.TreasuryWallet,
-		&i.ApiKey,
+		&i.Blockchain,
+		&i.Environment,
+		&i.TokenAddress,
+		&i.TokenName,
+		&i.TokenSymbol,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
 	return i, err
 }
 
-const getProject = `-- name: GetProject :one
-SELECT id, owner_address, name, description, logo_url, website_url, twitter_url, discord_url, token_contract, chain, treasury_wallet, api_key, created_at, updated_at FROM projects WHERE id = $1
+const getProjectByID = `-- name: GetProjectByID :one
+SELECT id, company_name, employee_count, discovery_source, name, slug, description, logo_url, website_url, twitter_handle, discord_invite_link, treasury_wallet, blockchain, environment, token_address, token_name, token_symbol, created_at, updated_at FROM projects WHERE id = $1
 `
 
-func (q *Queries) GetProject(ctx context.Context, id uuid.UUID) (Project, error) {
-	row := q.db.QueryRowContext(ctx, getProject, id)
+func (q *Queries) GetProjectByID(ctx context.Context, id uuid.UUID) (Project, error) {
+	row := q.db.QueryRowContext(ctx, getProjectByID, id)
 	var i Project
 	err := row.Scan(
 		&i.ID,
-		&i.OwnerAddress,
+		&i.CompanyName,
+		&i.EmployeeCount,
+		&i.DiscoverySource,
 		&i.Name,
+		&i.Slug,
 		&i.Description,
 		&i.LogoUrl,
 		&i.WebsiteUrl,
-		&i.TwitterUrl,
-		&i.DiscordUrl,
-		&i.TokenContract,
-		&i.Chain,
+		&i.TwitterHandle,
+		&i.DiscordInviteLink,
 		&i.TreasuryWallet,
-		&i.ApiKey,
+		&i.Blockchain,
+		&i.Environment,
+		&i.TokenAddress,
+		&i.TokenName,
+		&i.TokenSymbol,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
 	return i, err
 }
 
-const listProjectsByOwner = `-- name: ListProjectsByOwner :many
-SELECT id, owner_address, name, description, logo_url, website_url, twitter_url, discord_url, token_contract, chain, treasury_wallet, api_key, created_at, updated_at FROM projects WHERE owner_address = $1 ORDER BY created_at DESC
+const getProjectBySlug = `-- name: GetProjectBySlug :one
+SELECT id, company_name, employee_count, discovery_source, name, slug, description, logo_url, website_url, twitter_handle, discord_invite_link, treasury_wallet, blockchain, environment, token_address, token_name, token_symbol, created_at, updated_at FROM projects WHERE slug = $1
 `
 
-func (q *Queries) ListProjectsByOwner(ctx context.Context, ownerAddress string) ([]Project, error) {
-	rows, err := q.db.QueryContext(ctx, listProjectsByOwner, ownerAddress)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []Project{}
-	for rows.Next() {
-		var i Project
-		if err := rows.Scan(
-			&i.ID,
-			&i.OwnerAddress,
-			&i.Name,
-			&i.Description,
-			&i.LogoUrl,
-			&i.WebsiteUrl,
-			&i.TwitterUrl,
-			&i.DiscordUrl,
-			&i.TokenContract,
-			&i.Chain,
-			&i.TreasuryWallet,
-			&i.ApiKey,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const setProjectAPIKey = `-- name: SetProjectAPIKey :one
-UPDATE projects SET api_key = $2, updated_at = NOW()
-WHERE id = $1
-RETURNING id, owner_address, name, description, logo_url, website_url, twitter_url, discord_url, token_contract, chain, treasury_wallet, api_key, created_at, updated_at
-`
-
-type SetProjectAPIKeyParams struct {
-	ID     uuid.UUID      `json:"id"`
-	ApiKey sql.NullString `json:"api_key"`
-}
-
-func (q *Queries) SetProjectAPIKey(ctx context.Context, arg SetProjectAPIKeyParams) (Project, error) {
-	row := q.db.QueryRowContext(ctx, setProjectAPIKey, arg.ID, arg.ApiKey)
+func (q *Queries) GetProjectBySlug(ctx context.Context, slug string) (Project, error) {
+	row := q.db.QueryRowContext(ctx, getProjectBySlug, slug)
 	var i Project
 	err := row.Scan(
 		&i.ID,
-		&i.OwnerAddress,
+		&i.CompanyName,
+		&i.EmployeeCount,
+		&i.DiscoverySource,
 		&i.Name,
+		&i.Slug,
 		&i.Description,
 		&i.LogoUrl,
 		&i.WebsiteUrl,
-		&i.TwitterUrl,
-		&i.DiscordUrl,
-		&i.TokenContract,
-		&i.Chain,
+		&i.TwitterHandle,
+		&i.DiscordInviteLink,
 		&i.TreasuryWallet,
-		&i.ApiKey,
+		&i.Blockchain,
+		&i.Environment,
+		&i.TokenAddress,
+		&i.TokenName,
+		&i.TokenSymbol,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -166,22 +155,26 @@ func (q *Queries) SetProjectAPIKey(ctx context.Context, arg SetProjectAPIKeyPara
 }
 
 const updateProject = `-- name: UpdateProject :one
-UPDATE projects
-SET name = $2, description = $3, logo_url = $4, website_url = $5,
-    twitter_url = $6, discord_url = $7, updated_at = NOW()
-WHERE id = $1 AND owner_address = $8
-RETURNING id, owner_address, name, description, logo_url, website_url, twitter_url, discord_url, token_contract, chain, treasury_wallet, api_key, created_at, updated_at
+UPDATE projects SET
+    name               = COALESCE($2, name),
+    description        = COALESCE($3, description),
+    logo_url           = COALESCE($4, logo_url),
+    website_url        = COALESCE($5, website_url),
+    twitter_handle     = COALESCE($6, twitter_handle),
+    discord_invite_link = COALESCE($7, discord_invite_link),
+    updated_at         = NOW()
+WHERE id = $1
+RETURNING id, company_name, employee_count, discovery_source, name, slug, description, logo_url, website_url, twitter_handle, discord_invite_link, treasury_wallet, blockchain, environment, token_address, token_name, token_symbol, created_at, updated_at
 `
 
 type UpdateProjectParams struct {
-	ID           uuid.UUID      `json:"id"`
-	Name         string         `json:"name"`
-	Description  sql.NullString `json:"description"`
-	LogoUrl      sql.NullString `json:"logo_url"`
-	WebsiteUrl   sql.NullString `json:"website_url"`
-	TwitterUrl   sql.NullString `json:"twitter_url"`
-	DiscordUrl   sql.NullString `json:"discord_url"`
-	OwnerAddress string         `json:"owner_address"`
+	ID                uuid.UUID      `json:"id"`
+	Name              string         `json:"name"`
+	Description       sql.NullString `json:"description"`
+	LogoUrl           sql.NullString `json:"logo_url"`
+	WebsiteUrl        sql.NullString `json:"website_url"`
+	TwitterHandle     sql.NullString `json:"twitter_handle"`
+	DiscordInviteLink sql.NullString `json:"discord_invite_link"`
 }
 
 func (q *Queries) UpdateProject(ctx context.Context, arg UpdateProjectParams) (Project, error) {
@@ -191,24 +184,77 @@ func (q *Queries) UpdateProject(ctx context.Context, arg UpdateProjectParams) (P
 		arg.Description,
 		arg.LogoUrl,
 		arg.WebsiteUrl,
-		arg.TwitterUrl,
-		arg.DiscordUrl,
-		arg.OwnerAddress,
+		arg.TwitterHandle,
+		arg.DiscordInviteLink,
 	)
 	var i Project
 	err := row.Scan(
 		&i.ID,
-		&i.OwnerAddress,
+		&i.CompanyName,
+		&i.EmployeeCount,
+		&i.DiscoverySource,
 		&i.Name,
+		&i.Slug,
 		&i.Description,
 		&i.LogoUrl,
 		&i.WebsiteUrl,
-		&i.TwitterUrl,
-		&i.DiscordUrl,
-		&i.TokenContract,
-		&i.Chain,
+		&i.TwitterHandle,
+		&i.DiscordInviteLink,
 		&i.TreasuryWallet,
-		&i.ApiKey,
+		&i.Blockchain,
+		&i.Environment,
+		&i.TokenAddress,
+		&i.TokenName,
+		&i.TokenSymbol,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateProjectTokenInfo = `-- name: UpdateProjectTokenInfo :one
+UPDATE projects SET
+    token_address = $2,
+    token_name    = $3,
+    token_symbol  = $4,
+    updated_at    = NOW()
+WHERE id = $1
+RETURNING id, company_name, employee_count, discovery_source, name, slug, description, logo_url, website_url, twitter_handle, discord_invite_link, treasury_wallet, blockchain, environment, token_address, token_name, token_symbol, created_at, updated_at
+`
+
+type UpdateProjectTokenInfoParams struct {
+	ID           uuid.UUID      `json:"id"`
+	TokenAddress string         `json:"token_address"`
+	TokenName    sql.NullString `json:"token_name"`
+	TokenSymbol  sql.NullString `json:"token_symbol"`
+}
+
+func (q *Queries) UpdateProjectTokenInfo(ctx context.Context, arg UpdateProjectTokenInfoParams) (Project, error) {
+	row := q.db.QueryRowContext(ctx, updateProjectTokenInfo,
+		arg.ID,
+		arg.TokenAddress,
+		arg.TokenName,
+		arg.TokenSymbol,
+	)
+	var i Project
+	err := row.Scan(
+		&i.ID,
+		&i.CompanyName,
+		&i.EmployeeCount,
+		&i.DiscoverySource,
+		&i.Name,
+		&i.Slug,
+		&i.Description,
+		&i.LogoUrl,
+		&i.WebsiteUrl,
+		&i.TwitterHandle,
+		&i.DiscordInviteLink,
+		&i.TreasuryWallet,
+		&i.Blockchain,
+		&i.Environment,
+		&i.TokenAddress,
+		&i.TokenName,
+		&i.TokenSymbol,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)

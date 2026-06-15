@@ -8,119 +8,186 @@ package db
 import (
 	"context"
 	"database/sql"
+
+	"github.com/google/uuid"
 )
 
 const createUser = `-- name: CreateUser :one
-INSERT INTO users (wallet_address)
-VALUES ($1)
-ON CONFLICT (wallet_address) DO NOTHING
-RETURNING wallet_address, display_name, bio, avatar_url, twitter_id, twitter_handle, discord_id, discord_handle, created_at, updated_at
+INSERT INTO users (wallet_address, ens_name, display_name, avatar_url)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT (wallet_address) DO UPDATE
+SET last_seen = NOW()
+RETURNING id, wallet_address, ens_name, display_name, avatar_url, twitter_id, twitter_handle, discord_id, discord_handle, discord_token, created_at, updated_at, last_seen
 `
 
-func (q *Queries) CreateUser(ctx context.Context, walletAddress string) (User, error) {
-	row := q.db.QueryRowContext(ctx, createUser, walletAddress)
-	var i User
-	err := row.Scan(
-		&i.WalletAddress,
-		&i.DisplayName,
-		&i.Bio,
-		&i.AvatarUrl,
-		&i.TwitterID,
-		&i.TwitterHandle,
-		&i.DiscordID,
-		&i.DiscordHandle,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
-}
-
-const getUser = `-- name: GetUser :one
-SELECT wallet_address, display_name, bio, avatar_url, twitter_id, twitter_handle, discord_id, discord_handle, created_at, updated_at FROM users WHERE wallet_address = $1
-`
-
-func (q *Queries) GetUser(ctx context.Context, walletAddress string) (User, error) {
-	row := q.db.QueryRowContext(ctx, getUser, walletAddress)
-	var i User
-	err := row.Scan(
-		&i.WalletAddress,
-		&i.DisplayName,
-		&i.Bio,
-		&i.AvatarUrl,
-		&i.TwitterID,
-		&i.TwitterHandle,
-		&i.DiscordID,
-		&i.DiscordHandle,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
-}
-
-const updateUser = `-- name: UpdateUser :one
-UPDATE users
-SET display_name = $2, bio = $3, avatar_url = $4, updated_at = NOW()
-WHERE wallet_address = $1
-RETURNING wallet_address, display_name, bio, avatar_url, twitter_id, twitter_handle, discord_id, discord_handle, created_at, updated_at
-`
-
-type UpdateUserParams struct {
+type CreateUserParams struct {
 	WalletAddress string         `json:"wallet_address"`
+	EnsName       sql.NullString `json:"ens_name"`
 	DisplayName   sql.NullString `json:"display_name"`
-	Bio           sql.NullString `json:"bio"`
 	AvatarUrl     sql.NullString `json:"avatar_url"`
 }
 
-func (q *Queries) UpdateUser(ctx context.Context, arg UpdateUserParams) (User, error) {
-	row := q.db.QueryRowContext(ctx, updateUser,
+func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, error) {
+	row := q.db.QueryRowContext(ctx, createUser,
 		arg.WalletAddress,
+		arg.EnsName,
 		arg.DisplayName,
-		arg.Bio,
 		arg.AvatarUrl,
 	)
 	var i User
 	err := row.Scan(
+		&i.ID,
 		&i.WalletAddress,
+		&i.EnsName,
 		&i.DisplayName,
-		&i.Bio,
 		&i.AvatarUrl,
 		&i.TwitterID,
 		&i.TwitterHandle,
 		&i.DiscordID,
 		&i.DiscordHandle,
+		&i.DiscordToken,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.LastSeen,
+	)
+	return i, err
+}
+
+const getUserByID = `-- name: GetUserByID :one
+SELECT id, wallet_address, ens_name, display_name, avatar_url, twitter_id, twitter_handle, discord_id, discord_handle, discord_token, created_at, updated_at, last_seen FROM users WHERE id = $1
+`
+
+func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
+	row := q.db.QueryRowContext(ctx, getUserByID, id)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.WalletAddress,
+		&i.EnsName,
+		&i.DisplayName,
+		&i.AvatarUrl,
+		&i.TwitterID,
+		&i.TwitterHandle,
+		&i.DiscordID,
+		&i.DiscordHandle,
+		&i.DiscordToken,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.LastSeen,
+	)
+	return i, err
+}
+
+const getUserByWallet = `-- name: GetUserByWallet :one
+SELECT id, wallet_address, ens_name, display_name, avatar_url, twitter_id, twitter_handle, discord_id, discord_handle, discord_token, created_at, updated_at, last_seen FROM users WHERE wallet_address = $1
+`
+
+func (q *Queries) GetUserByWallet(ctx context.Context, walletAddress string) (User, error) {
+	row := q.db.QueryRowContext(ctx, getUserByWallet, walletAddress)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.WalletAddress,
+		&i.EnsName,
+		&i.DisplayName,
+		&i.AvatarUrl,
+		&i.TwitterID,
+		&i.TwitterHandle,
+		&i.DiscordID,
+		&i.DiscordHandle,
+		&i.DiscordToken,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.LastSeen,
+	)
+	return i, err
+}
+
+const touchLastSeen = `-- name: TouchLastSeen :exec
+UPDATE users SET last_seen = NOW() WHERE id = $1
+`
+
+func (q *Queries) TouchLastSeen(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.ExecContext(ctx, touchLastSeen, id)
+	return err
+}
+
+const updateUserProfile = `-- name: UpdateUserProfile :one
+UPDATE users
+SET display_name = $2, avatar_url = $3, ens_name = $4, updated_at = NOW()
+WHERE id = $1
+RETURNING id, wallet_address, ens_name, display_name, avatar_url, twitter_id, twitter_handle, discord_id, discord_handle, discord_token, created_at, updated_at, last_seen
+`
+
+type UpdateUserProfileParams struct {
+	ID          uuid.UUID      `json:"id"`
+	DisplayName sql.NullString `json:"display_name"`
+	AvatarUrl   sql.NullString `json:"avatar_url"`
+	EnsName     sql.NullString `json:"ens_name"`
+}
+
+func (q *Queries) UpdateUserProfile(ctx context.Context, arg UpdateUserProfileParams) (User, error) {
+	row := q.db.QueryRowContext(ctx, updateUserProfile,
+		arg.ID,
+		arg.DisplayName,
+		arg.AvatarUrl,
+		arg.EnsName,
+	)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.WalletAddress,
+		&i.EnsName,
+		&i.DisplayName,
+		&i.AvatarUrl,
+		&i.TwitterID,
+		&i.TwitterHandle,
+		&i.DiscordID,
+		&i.DiscordHandle,
+		&i.DiscordToken,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.LastSeen,
 	)
 	return i, err
 }
 
 const upsertDiscord = `-- name: UpsertDiscord :one
 UPDATE users
-SET discord_id = $2, discord_handle = $3, updated_at = NOW()
-WHERE wallet_address = $1
-RETURNING wallet_address, display_name, bio, avatar_url, twitter_id, twitter_handle, discord_id, discord_handle, created_at, updated_at
+SET discord_id = $2, discord_handle = $3, discord_token = $4, updated_at = NOW()
+WHERE id = $1
+RETURNING id, wallet_address, ens_name, display_name, avatar_url, twitter_id, twitter_handle, discord_id, discord_handle, discord_token, created_at, updated_at, last_seen
 `
 
 type UpsertDiscordParams struct {
-	WalletAddress string         `json:"wallet_address"`
+	ID            uuid.UUID      `json:"id"`
 	DiscordID     sql.NullString `json:"discord_id"`
 	DiscordHandle sql.NullString `json:"discord_handle"`
+	DiscordToken  sql.NullString `json:"discord_token"`
 }
 
 func (q *Queries) UpsertDiscord(ctx context.Context, arg UpsertDiscordParams) (User, error) {
-	row := q.db.QueryRowContext(ctx, upsertDiscord, arg.WalletAddress, arg.DiscordID, arg.DiscordHandle)
+	row := q.db.QueryRowContext(ctx, upsertDiscord,
+		arg.ID,
+		arg.DiscordID,
+		arg.DiscordHandle,
+		arg.DiscordToken,
+	)
 	var i User
 	err := row.Scan(
+		&i.ID,
 		&i.WalletAddress,
+		&i.EnsName,
 		&i.DisplayName,
-		&i.Bio,
 		&i.AvatarUrl,
 		&i.TwitterID,
 		&i.TwitterHandle,
 		&i.DiscordID,
 		&i.DiscordHandle,
+		&i.DiscordToken,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.LastSeen,
 	)
 	return i, err
 }
@@ -128,30 +195,33 @@ func (q *Queries) UpsertDiscord(ctx context.Context, arg UpsertDiscordParams) (U
 const upsertTwitter = `-- name: UpsertTwitter :one
 UPDATE users
 SET twitter_id = $2, twitter_handle = $3, updated_at = NOW()
-WHERE wallet_address = $1
-RETURNING wallet_address, display_name, bio, avatar_url, twitter_id, twitter_handle, discord_id, discord_handle, created_at, updated_at
+WHERE id = $1
+RETURNING id, wallet_address, ens_name, display_name, avatar_url, twitter_id, twitter_handle, discord_id, discord_handle, discord_token, created_at, updated_at, last_seen
 `
 
 type UpsertTwitterParams struct {
-	WalletAddress string         `json:"wallet_address"`
+	ID            uuid.UUID      `json:"id"`
 	TwitterID     sql.NullString `json:"twitter_id"`
 	TwitterHandle sql.NullString `json:"twitter_handle"`
 }
 
 func (q *Queries) UpsertTwitter(ctx context.Context, arg UpsertTwitterParams) (User, error) {
-	row := q.db.QueryRowContext(ctx, upsertTwitter, arg.WalletAddress, arg.TwitterID, arg.TwitterHandle)
+	row := q.db.QueryRowContext(ctx, upsertTwitter, arg.ID, arg.TwitterID, arg.TwitterHandle)
 	var i User
 	err := row.Scan(
+		&i.ID,
 		&i.WalletAddress,
+		&i.EnsName,
 		&i.DisplayName,
-		&i.Bio,
 		&i.AvatarUrl,
 		&i.TwitterID,
 		&i.TwitterHandle,
 		&i.DiscordID,
 		&i.DiscordHandle,
+		&i.DiscordToken,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.LastSeen,
 	)
 	return i, err
 }

@@ -1,20 +1,38 @@
 -- name: UpsertCompletion :one
-INSERT INTO task_completions (campaign_id, task_id, wallet_address, status, proof, failure_reason, verified_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
-ON CONFLICT (task_id, wallet_address) DO UPDATE
-    SET status = $4, proof = $5, failure_reason = $6, verified_at = $7, updated_at = NOW()
+INSERT INTO task_completions (user_id, task_id, campaign_id, status, points_earned, proof)
+VALUES ($1, $2, $3, $4, $5, $6)
+ON CONFLICT (user_id, task_id) DO UPDATE
+    SET status = $4, points_earned = $5, proof = $6, completed_at = NOW()
 RETURNING *;
 
 -- name: GetCompletion :one
 SELECT * FROM task_completions
-WHERE task_id = $1 AND wallet_address = $2;
+WHERE user_id = $1 AND task_id = $2;
 
--- name: ListCompletionsByWalletAndCampaign :many
-SELECT tc.*, t.points, t.is_required FROM task_completions tc
+-- name: ListCompletionsByUserAndCampaign :many
+SELECT tc.*, t.points AS task_points, t.is_required, t.title AS task_title
+FROM task_completions tc
 JOIN tasks t ON t.id = tc.task_id
-WHERE tc.campaign_id = $1 AND tc.wallet_address = $2;
+WHERE tc.campaign_id = $1 AND tc.user_id = $2;
+
+-- name: GetUserPointsForCampaign :one
+SELECT COALESCE(SUM(points_earned), 0)::INT AS total_points
+FROM task_completions
+WHERE campaign_id = $1 AND user_id = $2 AND status = 'verified';
 
 -- name: GetCompletionSpeedSeconds :one
-SELECT EXTRACT(EPOCH FROM (MAX(verified_at) - MIN(verified_at)))::INT AS seconds
+SELECT EXTRACT(EPOCH FROM (MAX(completed_at) - MIN(completed_at)))::INT AS seconds
 FROM task_completions
-WHERE campaign_id = $1 AND wallet_address = $2 AND status = 'verified';
+WHERE campaign_id = $1 AND user_id = $2 AND status = 'verified';
+
+-- name: CountVerifiedTasksForUser :one
+SELECT COUNT(*) FROM task_completions
+WHERE campaign_id = $1 AND user_id = $2 AND status = 'verified';
+
+-- name: ListCampaignLeaderboard :many
+SELECT user_id, SUM(points_earned)::INT AS total_points
+FROM task_completions
+WHERE campaign_id = $1 AND status = 'verified'
+GROUP BY user_id
+ORDER BY total_points DESC
+LIMIT $2 OFFSET $3;

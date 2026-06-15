@@ -15,146 +15,293 @@ import (
 )
 
 const createCampaign = `-- name: CreateCampaign :one
-INSERT INTO campaigns (project_id, name, description, banner_url, chain, token_contract, total_allocation, reward_type, reward_config, eligibility_rules, vesting_type, vesting_days, claim_window_days, gas_sponsored, starts_at, ends_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
-RETURNING id, project_id, name, description, banner_url, status, chain, token_contract, total_allocation, reward_type, reward_config, eligibility_rules, vesting_type, vesting_days, claim_window_days, gas_sponsored, starts_at, ends_at, merkle_root, contract_address, created_at, updated_at
+INSERT INTO campaigns (
+    project_id, title, slug, description, banner_url,
+    chain, token_contract, token_symbol, token_decimals,
+    total_allocation, reward_type, reward_config,
+    eligibility_rules, start_date, end_date, claim_window_days
+) VALUES (
+    $1, $2, $3, $4, $5,
+    $6, $7, $8, $9,
+    $10, $11, $12,
+    $13, $14, $15, $16
+)
+RETURNING id, project_id, title, slug, description, banner_url, chain, token_contract, token_symbol, token_decimals, total_allocation, claimed_amount, reward_type, reward_config, eligibility_rules, start_date, end_date, claim_window_days, vesting_type, vesting_days, gas_sponsored, merkle_root, claim_contract, deploy_tx_hash, status, finalized_at, completed_at, cancelled_at, deleted_at, created_at, updated_at
 `
 
 type CreateCampaignParams struct {
 	ProjectID        uuid.UUID       `json:"project_id"`
-	Name             string          `json:"name"`
+	Title            string          `json:"title"`
+	Slug             string          `json:"slug"`
 	Description      sql.NullString  `json:"description"`
 	BannerUrl        sql.NullString  `json:"banner_url"`
 	Chain            string          `json:"chain"`
 	TokenContract    string          `json:"token_contract"`
+	TokenSymbol      sql.NullString  `json:"token_symbol"`
+	TokenDecimals    sql.NullInt32   `json:"token_decimals"`
 	TotalAllocation  string          `json:"total_allocation"`
 	RewardType       RewardType      `json:"reward_type"`
 	RewardConfig     json.RawMessage `json:"reward_config"`
 	EligibilityRules json.RawMessage `json:"eligibility_rules"`
-	VestingType      VestingType     `json:"vesting_type"`
-	VestingDays      sql.NullInt32   `json:"vesting_days"`
+	StartDate        time.Time       `json:"start_date"`
+	EndDate          time.Time       `json:"end_date"`
 	ClaimWindowDays  int32           `json:"claim_window_days"`
-	GasSponsored     bool            `json:"gas_sponsored"`
-	StartsAt         time.Time       `json:"starts_at"`
-	EndsAt           time.Time       `json:"ends_at"`
 }
 
 func (q *Queries) CreateCampaign(ctx context.Context, arg CreateCampaignParams) (Campaign, error) {
 	row := q.db.QueryRowContext(ctx, createCampaign,
 		arg.ProjectID,
-		arg.Name,
+		arg.Title,
+		arg.Slug,
 		arg.Description,
 		arg.BannerUrl,
 		arg.Chain,
 		arg.TokenContract,
+		arg.TokenSymbol,
+		arg.TokenDecimals,
 		arg.TotalAllocation,
 		arg.RewardType,
 		arg.RewardConfig,
 		arg.EligibilityRules,
-		arg.VestingType,
-		arg.VestingDays,
+		arg.StartDate,
+		arg.EndDate,
 		arg.ClaimWindowDays,
-		arg.GasSponsored,
-		arg.StartsAt,
-		arg.EndsAt,
 	)
 	var i Campaign
 	err := row.Scan(
 		&i.ID,
 		&i.ProjectID,
-		&i.Name,
+		&i.Title,
+		&i.Slug,
 		&i.Description,
 		&i.BannerUrl,
-		&i.Status,
 		&i.Chain,
 		&i.TokenContract,
+		&i.TokenSymbol,
+		&i.TokenDecimals,
 		&i.TotalAllocation,
+		&i.ClaimedAmount,
 		&i.RewardType,
 		&i.RewardConfig,
 		&i.EligibilityRules,
+		&i.StartDate,
+		&i.EndDate,
+		&i.ClaimWindowDays,
 		&i.VestingType,
 		&i.VestingDays,
-		&i.ClaimWindowDays,
 		&i.GasSponsored,
-		&i.StartsAt,
-		&i.EndsAt,
 		&i.MerkleRoot,
-		&i.ContractAddress,
+		&i.ClaimContract,
+		&i.DeployTxHash,
+		&i.Status,
+		&i.FinalizedAt,
+		&i.CompletedAt,
+		&i.CancelledAt,
+		&i.DeletedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
 	return i, err
 }
 
-const extendCampaignDeadline = `-- name: ExtendCampaignDeadline :one
-UPDATE campaigns SET ends_at = $2, updated_at = NOW()
+const finalizeCampaign = `-- name: FinalizeCampaign :one
+UPDATE campaigns SET
+    status         = 'distributing',
+    merkle_root    = $2,
+    claim_contract = $3,
+    deploy_tx_hash = $4,
+    finalized_at   = NOW()
 WHERE id = $1
-RETURNING id, project_id, name, description, banner_url, status, chain, token_contract, total_allocation, reward_type, reward_config, eligibility_rules, vesting_type, vesting_days, claim_window_days, gas_sponsored, starts_at, ends_at, merkle_root, contract_address, created_at, updated_at
+AND status = 'ended'
+RETURNING id, project_id, title, slug, description, banner_url, chain, token_contract, token_symbol, token_decimals, total_allocation, claimed_amount, reward_type, reward_config, eligibility_rules, start_date, end_date, claim_window_days, vesting_type, vesting_days, gas_sponsored, merkle_root, claim_contract, deploy_tx_hash, status, finalized_at, completed_at, cancelled_at, deleted_at, created_at, updated_at
 `
 
-type ExtendCampaignDeadlineParams struct {
-	ID     uuid.UUID `json:"id"`
-	EndsAt time.Time `json:"ends_at"`
+type FinalizeCampaignParams struct {
+	ID            uuid.UUID      `json:"id"`
+	MerkleRoot    sql.NullString `json:"merkle_root"`
+	ClaimContract sql.NullString `json:"claim_contract"`
+	DeployTxHash  sql.NullString `json:"deploy_tx_hash"`
 }
 
-func (q *Queries) ExtendCampaignDeadline(ctx context.Context, arg ExtendCampaignDeadlineParams) (Campaign, error) {
-	row := q.db.QueryRowContext(ctx, extendCampaignDeadline, arg.ID, arg.EndsAt)
+func (q *Queries) FinalizeCampaign(ctx context.Context, arg FinalizeCampaignParams) (Campaign, error) {
+	row := q.db.QueryRowContext(ctx, finalizeCampaign,
+		arg.ID,
+		arg.MerkleRoot,
+		arg.ClaimContract,
+		arg.DeployTxHash,
+	)
 	var i Campaign
 	err := row.Scan(
 		&i.ID,
 		&i.ProjectID,
-		&i.Name,
+		&i.Title,
+		&i.Slug,
 		&i.Description,
 		&i.BannerUrl,
-		&i.Status,
 		&i.Chain,
 		&i.TokenContract,
+		&i.TokenSymbol,
+		&i.TokenDecimals,
 		&i.TotalAllocation,
+		&i.ClaimedAmount,
 		&i.RewardType,
 		&i.RewardConfig,
 		&i.EligibilityRules,
+		&i.StartDate,
+		&i.EndDate,
+		&i.ClaimWindowDays,
 		&i.VestingType,
 		&i.VestingDays,
-		&i.ClaimWindowDays,
 		&i.GasSponsored,
-		&i.StartsAt,
-		&i.EndsAt,
 		&i.MerkleRoot,
-		&i.ContractAddress,
+		&i.ClaimContract,
+		&i.DeployTxHash,
+		&i.Status,
+		&i.FinalizedAt,
+		&i.CompletedAt,
+		&i.CancelledAt,
+		&i.DeletedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
 	return i, err
 }
 
-const getCampaign = `-- name: GetCampaign :one
-SELECT id, project_id, name, description, banner_url, status, chain, token_contract, total_allocation, reward_type, reward_config, eligibility_rules, vesting_type, vesting_days, claim_window_days, gas_sponsored, starts_at, ends_at, merkle_root, contract_address, created_at, updated_at FROM campaigns WHERE id = $1
+const getCampaignByID = `-- name: GetCampaignByID :one
+SELECT id, project_id, title, slug, description, banner_url, chain, token_contract, token_symbol, token_decimals, total_allocation, claimed_amount, reward_type, reward_config, eligibility_rules, start_date, end_date, claim_window_days, vesting_type, vesting_days, gas_sponsored, merkle_root, claim_contract, deploy_tx_hash, status, finalized_at, completed_at, cancelled_at, deleted_at, created_at, updated_at FROM campaigns
+WHERE id = $1
+AND deleted_at IS NULL
 `
 
-func (q *Queries) GetCampaign(ctx context.Context, id uuid.UUID) (Campaign, error) {
-	row := q.db.QueryRowContext(ctx, getCampaign, id)
+func (q *Queries) GetCampaignByID(ctx context.Context, id uuid.UUID) (Campaign, error) {
+	row := q.db.QueryRowContext(ctx, getCampaignByID, id)
 	var i Campaign
 	err := row.Scan(
 		&i.ID,
 		&i.ProjectID,
-		&i.Name,
+		&i.Title,
+		&i.Slug,
 		&i.Description,
 		&i.BannerUrl,
-		&i.Status,
 		&i.Chain,
 		&i.TokenContract,
+		&i.TokenSymbol,
+		&i.TokenDecimals,
 		&i.TotalAllocation,
+		&i.ClaimedAmount,
 		&i.RewardType,
 		&i.RewardConfig,
 		&i.EligibilityRules,
+		&i.StartDate,
+		&i.EndDate,
+		&i.ClaimWindowDays,
 		&i.VestingType,
 		&i.VestingDays,
-		&i.ClaimWindowDays,
 		&i.GasSponsored,
-		&i.StartsAt,
-		&i.EndsAt,
 		&i.MerkleRoot,
-		&i.ContractAddress,
+		&i.ClaimContract,
+		&i.DeployTxHash,
+		&i.Status,
+		&i.FinalizedAt,
+		&i.CompletedAt,
+		&i.CancelledAt,
+		&i.DeletedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getCampaignBySlug = `-- name: GetCampaignBySlug :one
+SELECT id, project_id, title, slug, description, banner_url, chain, token_contract, token_symbol, token_decimals, total_allocation, claimed_amount, reward_type, reward_config, eligibility_rules, start_date, end_date, claim_window_days, vesting_type, vesting_days, gas_sponsored, merkle_root, claim_contract, deploy_tx_hash, status, finalized_at, completed_at, cancelled_at, deleted_at, created_at, updated_at FROM campaigns
+WHERE slug = $1
+AND deleted_at IS NULL
+`
+
+func (q *Queries) GetCampaignBySlug(ctx context.Context, slug string) (Campaign, error) {
+	row := q.db.QueryRowContext(ctx, getCampaignBySlug, slug)
+	var i Campaign
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.Title,
+		&i.Slug,
+		&i.Description,
+		&i.BannerUrl,
+		&i.Chain,
+		&i.TokenContract,
+		&i.TokenSymbol,
+		&i.TokenDecimals,
+		&i.TotalAllocation,
+		&i.ClaimedAmount,
+		&i.RewardType,
+		&i.RewardConfig,
+		&i.EligibilityRules,
+		&i.StartDate,
+		&i.EndDate,
+		&i.ClaimWindowDays,
+		&i.VestingType,
+		&i.VestingDays,
+		&i.GasSponsored,
+		&i.MerkleRoot,
+		&i.ClaimContract,
+		&i.DeployTxHash,
+		&i.Status,
+		&i.FinalizedAt,
+		&i.CompletedAt,
+		&i.CancelledAt,
+		&i.DeletedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const incrementClaimedAmount = `-- name: IncrementClaimedAmount :one
+UPDATE campaigns SET
+    claimed_amount = claimed_amount + $2
+WHERE id = $1
+RETURNING id, project_id, title, slug, description, banner_url, chain, token_contract, token_symbol, token_decimals, total_allocation, claimed_amount, reward_type, reward_config, eligibility_rules, start_date, end_date, claim_window_days, vesting_type, vesting_days, gas_sponsored, merkle_root, claim_contract, deploy_tx_hash, status, finalized_at, completed_at, cancelled_at, deleted_at, created_at, updated_at
+`
+
+type IncrementClaimedAmountParams struct {
+	ID            uuid.UUID `json:"id"`
+	ClaimedAmount string    `json:"claimed_amount"`
+}
+
+func (q *Queries) IncrementClaimedAmount(ctx context.Context, arg IncrementClaimedAmountParams) (Campaign, error) {
+	row := q.db.QueryRowContext(ctx, incrementClaimedAmount, arg.ID, arg.ClaimedAmount)
+	var i Campaign
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.Title,
+		&i.Slug,
+		&i.Description,
+		&i.BannerUrl,
+		&i.Chain,
+		&i.TokenContract,
+		&i.TokenSymbol,
+		&i.TokenDecimals,
+		&i.TotalAllocation,
+		&i.ClaimedAmount,
+		&i.RewardType,
+		&i.RewardConfig,
+		&i.EligibilityRules,
+		&i.StartDate,
+		&i.EndDate,
+		&i.ClaimWindowDays,
+		&i.VestingType,
+		&i.VestingDays,
+		&i.GasSponsored,
+		&i.MerkleRoot,
+		&i.ClaimContract,
+		&i.DeployTxHash,
+		&i.Status,
+		&i.FinalizedAt,
+		&i.CompletedAt,
+		&i.CancelledAt,
+		&i.DeletedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -162,28 +309,22 @@ func (q *Queries) GetCampaign(ctx context.Context, id uuid.UUID) (Campaign, erro
 }
 
 const listActiveCampaigns = `-- name: ListActiveCampaigns :many
-SELECT id, project_id, name, description, banner_url, status, chain, token_contract, total_allocation, reward_type, reward_config, eligibility_rules, vesting_type, vesting_days, claim_window_days, gas_sponsored, starts_at, ends_at, merkle_root, contract_address, created_at, updated_at FROM campaigns
+SELECT id, project_id, title, slug, description, banner_url, chain, token_contract, token_symbol, token_decimals, total_allocation, claimed_amount, reward_type, reward_config, eligibility_rules, start_date, end_date, claim_window_days, vesting_type, vesting_days, gas_sponsored, merkle_root, claim_contract, deploy_tx_hash, status, finalized_at, completed_at, cancelled_at, deleted_at, created_at, updated_at FROM campaigns
 WHERE status = 'active'
-  AND ($1::VARCHAR = '' OR chain = $1)
-  AND ($2::VARCHAR = '' OR reward_type::TEXT = $2)
+AND chain = COALESCE($3, chain)
+AND deleted_at IS NULL
 ORDER BY created_at DESC
-LIMIT $3 OFFSET $4
+LIMIT $1 OFFSET $2
 `
 
 type ListActiveCampaignsParams struct {
-	Column1 string `json:"column_1"`
-	Column2 string `json:"column_2"`
-	Limit   int32  `json:"limit"`
-	Offset  int32  `json:"offset"`
+	Limit  int32          `json:"limit"`
+	Offset int32          `json:"offset"`
+	Chain  sql.NullString `json:"chain"`
 }
 
 func (q *Queries) ListActiveCampaigns(ctx context.Context, arg ListActiveCampaignsParams) ([]Campaign, error) {
-	rows, err := q.db.QueryContext(ctx, listActiveCampaigns,
-		arg.Column1,
-		arg.Column2,
-		arg.Limit,
-		arg.Offset,
-	)
+	rows, err := q.db.QueryContext(ctx, listActiveCampaigns, arg.Limit, arg.Offset, arg.Chain)
 	if err != nil {
 		return nil, err
 	}
@@ -194,24 +335,33 @@ func (q *Queries) ListActiveCampaigns(ctx context.Context, arg ListActiveCampaig
 		if err := rows.Scan(
 			&i.ID,
 			&i.ProjectID,
-			&i.Name,
+			&i.Title,
+			&i.Slug,
 			&i.Description,
 			&i.BannerUrl,
-			&i.Status,
 			&i.Chain,
 			&i.TokenContract,
+			&i.TokenSymbol,
+			&i.TokenDecimals,
 			&i.TotalAllocation,
+			&i.ClaimedAmount,
 			&i.RewardType,
 			&i.RewardConfig,
 			&i.EligibilityRules,
+			&i.StartDate,
+			&i.EndDate,
+			&i.ClaimWindowDays,
 			&i.VestingType,
 			&i.VestingDays,
-			&i.ClaimWindowDays,
 			&i.GasSponsored,
-			&i.StartsAt,
-			&i.EndsAt,
 			&i.MerkleRoot,
-			&i.ContractAddress,
+			&i.ClaimContract,
+			&i.DeployTxHash,
+			&i.Status,
+			&i.FinalizedAt,
+			&i.CompletedAt,
+			&i.CancelledAt,
+			&i.DeletedAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -228,101 +378,151 @@ func (q *Queries) ListActiveCampaigns(ctx context.Context, arg ListActiveCampaig
 	return items, nil
 }
 
-const setCampaignMerkleData = `-- name: SetCampaignMerkleData :one
-UPDATE campaigns
-SET merkle_root = $2, contract_address = $3, status = 'distributing', updated_at = NOW()
-WHERE id = $1
-RETURNING id, project_id, name, description, banner_url, status, chain, token_contract, total_allocation, reward_type, reward_config, eligibility_rules, vesting_type, vesting_days, claim_window_days, gas_sponsored, starts_at, ends_at, merkle_root, contract_address, created_at, updated_at
+const listCampaignsByProject = `-- name: ListCampaignsByProject :many
+SELECT id, project_id, title, slug, description, banner_url, chain, token_contract, token_symbol, token_decimals, total_allocation, claimed_amount, reward_type, reward_config, eligibility_rules, start_date, end_date, claim_window_days, vesting_type, vesting_days, gas_sponsored, merkle_root, claim_contract, deploy_tx_hash, status, finalized_at, completed_at, cancelled_at, deleted_at, created_at, updated_at FROM campaigns
+WHERE project_id = $1
+AND deleted_at IS NULL
+ORDER BY created_at DESC
 `
 
-type SetCampaignMerkleDataParams struct {
-	ID              uuid.UUID      `json:"id"`
-	MerkleRoot      sql.NullString `json:"merkle_root"`
-	ContractAddress sql.NullString `json:"contract_address"`
+func (q *Queries) ListCampaignsByProject(ctx context.Context, projectID uuid.UUID) ([]Campaign, error) {
+	rows, err := q.db.QueryContext(ctx, listCampaignsByProject, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Campaign{}
+	for rows.Next() {
+		var i Campaign
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProjectID,
+			&i.Title,
+			&i.Slug,
+			&i.Description,
+			&i.BannerUrl,
+			&i.Chain,
+			&i.TokenContract,
+			&i.TokenSymbol,
+			&i.TokenDecimals,
+			&i.TotalAllocation,
+			&i.ClaimedAmount,
+			&i.RewardType,
+			&i.RewardConfig,
+			&i.EligibilityRules,
+			&i.StartDate,
+			&i.EndDate,
+			&i.ClaimWindowDays,
+			&i.VestingType,
+			&i.VestingDays,
+			&i.GasSponsored,
+			&i.MerkleRoot,
+			&i.ClaimContract,
+			&i.DeployTxHash,
+			&i.Status,
+			&i.FinalizedAt,
+			&i.CompletedAt,
+			&i.CancelledAt,
+			&i.DeletedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
-func (q *Queries) SetCampaignMerkleData(ctx context.Context, arg SetCampaignMerkleDataParams) (Campaign, error) {
-	row := q.db.QueryRowContext(ctx, setCampaignMerkleData, arg.ID, arg.MerkleRoot, arg.ContractAddress)
-	var i Campaign
-	err := row.Scan(
-		&i.ID,
-		&i.ProjectID,
-		&i.Name,
-		&i.Description,
-		&i.BannerUrl,
-		&i.Status,
-		&i.Chain,
-		&i.TokenContract,
-		&i.TotalAllocation,
-		&i.RewardType,
-		&i.RewardConfig,
-		&i.EligibilityRules,
-		&i.VestingType,
-		&i.VestingDays,
-		&i.ClaimWindowDays,
-		&i.GasSponsored,
-		&i.StartsAt,
-		&i.EndsAt,
-		&i.MerkleRoot,
-		&i.ContractAddress,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
+const softDeleteCampaign = `-- name: SoftDeleteCampaign :exec
+UPDATE campaigns
+SET deleted_at = NOW()
+WHERE id = $1
+AND deleted_at IS NULL
+`
+
+func (q *Queries) SoftDeleteCampaign(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.ExecContext(ctx, softDeleteCampaign, id)
+	return err
 }
 
 const updateCampaign = `-- name: UpdateCampaign :one
-UPDATE campaigns
-SET name = $2, description = $3, banner_url = $4, reward_config = $5,
-    eligibility_rules = $6, starts_at = $7, ends_at = $8, updated_at = NOW()
-WHERE id = $1 AND status = 'draft'
-RETURNING id, project_id, name, description, banner_url, status, chain, token_contract, total_allocation, reward_type, reward_config, eligibility_rules, vesting_type, vesting_days, claim_window_days, gas_sponsored, starts_at, ends_at, merkle_root, contract_address, created_at, updated_at
+UPDATE campaigns SET
+    title             = COALESCE($2, title),
+    description       = COALESCE($3, description),
+    banner_url        = COALESCE($4, banner_url),
+    reward_config     = COALESCE($5, reward_config),
+    eligibility_rules = COALESCE($6, eligibility_rules),
+    start_date        = COALESCE($7, start_date),
+    end_date          = COALESCE($8, end_date),
+    claim_window_days = COALESCE($9, claim_window_days)
+WHERE id = $1
+AND status = 'draft'
+AND deleted_at IS NULL
+RETURNING id, project_id, title, slug, description, banner_url, chain, token_contract, token_symbol, token_decimals, total_allocation, claimed_amount, reward_type, reward_config, eligibility_rules, start_date, end_date, claim_window_days, vesting_type, vesting_days, gas_sponsored, merkle_root, claim_contract, deploy_tx_hash, status, finalized_at, completed_at, cancelled_at, deleted_at, created_at, updated_at
 `
 
 type UpdateCampaignParams struct {
 	ID               uuid.UUID       `json:"id"`
-	Name             string          `json:"name"`
+	Title            string          `json:"title"`
 	Description      sql.NullString  `json:"description"`
 	BannerUrl        sql.NullString  `json:"banner_url"`
 	RewardConfig     json.RawMessage `json:"reward_config"`
 	EligibilityRules json.RawMessage `json:"eligibility_rules"`
-	StartsAt         time.Time       `json:"starts_at"`
-	EndsAt           time.Time       `json:"ends_at"`
+	StartDate        time.Time       `json:"start_date"`
+	EndDate          time.Time       `json:"end_date"`
+	ClaimWindowDays  int32           `json:"claim_window_days"`
 }
 
 func (q *Queries) UpdateCampaign(ctx context.Context, arg UpdateCampaignParams) (Campaign, error) {
 	row := q.db.QueryRowContext(ctx, updateCampaign,
 		arg.ID,
-		arg.Name,
+		arg.Title,
 		arg.Description,
 		arg.BannerUrl,
 		arg.RewardConfig,
 		arg.EligibilityRules,
-		arg.StartsAt,
-		arg.EndsAt,
+		arg.StartDate,
+		arg.EndDate,
+		arg.ClaimWindowDays,
 	)
 	var i Campaign
 	err := row.Scan(
 		&i.ID,
 		&i.ProjectID,
-		&i.Name,
+		&i.Title,
+		&i.Slug,
 		&i.Description,
 		&i.BannerUrl,
-		&i.Status,
 		&i.Chain,
 		&i.TokenContract,
+		&i.TokenSymbol,
+		&i.TokenDecimals,
 		&i.TotalAllocation,
+		&i.ClaimedAmount,
 		&i.RewardType,
 		&i.RewardConfig,
 		&i.EligibilityRules,
+		&i.StartDate,
+		&i.EndDate,
+		&i.ClaimWindowDays,
 		&i.VestingType,
 		&i.VestingDays,
-		&i.ClaimWindowDays,
 		&i.GasSponsored,
-		&i.StartsAt,
-		&i.EndsAt,
 		&i.MerkleRoot,
-		&i.ContractAddress,
+		&i.ClaimContract,
+		&i.DeployTxHash,
+		&i.Status,
+		&i.FinalizedAt,
+		&i.CompletedAt,
+		&i.CancelledAt,
+		&i.DeletedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -330,9 +530,11 @@ func (q *Queries) UpdateCampaign(ctx context.Context, arg UpdateCampaignParams) 
 }
 
 const updateCampaignStatus = `-- name: UpdateCampaignStatus :one
-UPDATE campaigns SET status = $2, updated_at = NOW()
+UPDATE campaigns
+SET status = $2
 WHERE id = $1
-RETURNING id, project_id, name, description, banner_url, status, chain, token_contract, total_allocation, reward_type, reward_config, eligibility_rules, vesting_type, vesting_days, claim_window_days, gas_sponsored, starts_at, ends_at, merkle_root, contract_address, created_at, updated_at
+AND deleted_at IS NULL
+RETURNING id, project_id, title, slug, description, banner_url, chain, token_contract, token_symbol, token_decimals, total_allocation, claimed_amount, reward_type, reward_config, eligibility_rules, start_date, end_date, claim_window_days, vesting_type, vesting_days, gas_sponsored, merkle_root, claim_contract, deploy_tx_hash, status, finalized_at, completed_at, cancelled_at, deleted_at, created_at, updated_at
 `
 
 type UpdateCampaignStatusParams struct {
@@ -346,24 +548,33 @@ func (q *Queries) UpdateCampaignStatus(ctx context.Context, arg UpdateCampaignSt
 	err := row.Scan(
 		&i.ID,
 		&i.ProjectID,
-		&i.Name,
+		&i.Title,
+		&i.Slug,
 		&i.Description,
 		&i.BannerUrl,
-		&i.Status,
 		&i.Chain,
 		&i.TokenContract,
+		&i.TokenSymbol,
+		&i.TokenDecimals,
 		&i.TotalAllocation,
+		&i.ClaimedAmount,
 		&i.RewardType,
 		&i.RewardConfig,
 		&i.EligibilityRules,
+		&i.StartDate,
+		&i.EndDate,
+		&i.ClaimWindowDays,
 		&i.VestingType,
 		&i.VestingDays,
-		&i.ClaimWindowDays,
 		&i.GasSponsored,
-		&i.StartsAt,
-		&i.EndsAt,
 		&i.MerkleRoot,
-		&i.ContractAddress,
+		&i.ClaimContract,
+		&i.DeployTxHash,
+		&i.Status,
+		&i.FinalizedAt,
+		&i.CompletedAt,
+		&i.CancelledAt,
+		&i.DeletedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
