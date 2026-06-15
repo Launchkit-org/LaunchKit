@@ -1,6 +1,8 @@
 CREATE TABLE users (
-    -- Web3 Core Identity (Primary Key)
-    wallet_address      VARCHAR(42) PRIMARY KEY, 
+    --Internal System Identity
+    id                  UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    -- Web3 Layer Authentication
+    wallet_address      VARCHAR(42) NOT NULL UNIQUE, 
     ens_name            VARCHAR(255),
 
     display_name        VARCHAR(100),
@@ -19,6 +21,7 @@ CREATE TABLE users (
     last_seen           TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
 
+CREATE INDEX idx_users_wallet_address ON users(wallet_address);
 -- Index 1: The B2C Social Verification Acceleration Loops
 CREATE INDEX idx_users_twitter_id ON users(twitter_id) WHERE twitter_id IS NOT NULL;
 CREATE INDEX idx_users_discord_id ON users(discord_id) WHERE discord_id IS NOT NULL;

@@ -14,7 +14,8 @@ import (
 )
 
 const countTasksByCampaign = `-- name: CountTasksByCampaign :one
-SELECT COUNT(*) FROM tasks WHERE campaign_id = $1
+SELECT COUNT(*) FROM tasks
+WHERE campaign_id = $1 AND deleted_at IS NULL
 `
 
 func (q *Queries) CountTasksByCampaign(ctx context.Context, campaignID uuid.UUID) (int64, error) {
@@ -25,20 +26,21 @@ func (q *Queries) CountTasksByCampaign(ctx context.Context, campaignID uuid.UUID
 }
 
 const createTask = `-- name: CreateTask :one
-INSERT INTO tasks (campaign_id, title, description, task_type, config, points, is_required, sort_order)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-RETURNING id, campaign_id, title, description, task_type, config, points, is_required, sort_order, created_at, updated_at
+INSERT INTO tasks (campaign_id, title, description, task_type, verification_type, config, points, is_required, display_order)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+RETURNING id, campaign_id, title, description, task_type, verification_type, config, points, is_required, display_order, deleted_at, created_at, updated_at
 `
 
 type CreateTaskParams struct {
-	CampaignID  uuid.UUID       `json:"campaign_id"`
-	Title       string          `json:"title"`
-	Description sql.NullString  `json:"description"`
-	TaskType    string          `json:"task_type"`
-	Config      json.RawMessage `json:"config"`
-	Points      int32           `json:"points"`
-	IsRequired  bool            `json:"is_required"`
-	SortOrder   int32           `json:"sort_order"`
+	CampaignID       uuid.UUID       `json:"campaign_id"`
+	Title            string          `json:"title"`
+	Description      sql.NullString  `json:"description"`
+	TaskType         string          `json:"task_type"`
+	VerificationType string          `json:"verification_type"`
+	Config           json.RawMessage `json:"config"`
+	Points           int32           `json:"points"`
+	IsRequired       bool            `json:"is_required"`
+	DisplayOrder     int32           `json:"display_order"`
 }
 
 func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (Task, error) {
@@ -47,10 +49,11 @@ func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (Task, e
 		arg.Title,
 		arg.Description,
 		arg.TaskType,
+		arg.VerificationType,
 		arg.Config,
 		arg.Points,
 		arg.IsRequired,
-		arg.SortOrder,
+		arg.DisplayOrder,
 	)
 	var i Task
 	err := row.Scan(
@@ -59,32 +62,21 @@ func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (Task, e
 		&i.Title,
 		&i.Description,
 		&i.TaskType,
+		&i.VerificationType,
 		&i.Config,
 		&i.Points,
 		&i.IsRequired,
-		&i.SortOrder,
+		&i.DisplayOrder,
+		&i.DeletedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
 	return i, err
 }
 
-const deleteTask = `-- name: DeleteTask :exec
-DELETE FROM tasks WHERE id = $1 AND campaign_id = $2
-`
-
-type DeleteTaskParams struct {
-	ID         uuid.UUID `json:"id"`
-	CampaignID uuid.UUID `json:"campaign_id"`
-}
-
-func (q *Queries) DeleteTask(ctx context.Context, arg DeleteTaskParams) error {
-	_, err := q.db.ExecContext(ctx, deleteTask, arg.ID, arg.CampaignID)
-	return err
-}
-
 const getTask = `-- name: GetTask :one
-SELECT id, campaign_id, title, description, task_type, config, points, is_required, sort_order, created_at, updated_at FROM tasks WHERE id = $1
+SELECT id, campaign_id, title, description, task_type, verification_type, config, points, is_required, display_order, deleted_at, created_at, updated_at FROM tasks
+WHERE id = $1 AND deleted_at IS NULL
 `
 
 func (q *Queries) GetTask(ctx context.Context, id uuid.UUID) (Task, error) {
@@ -96,10 +88,12 @@ func (q *Queries) GetTask(ctx context.Context, id uuid.UUID) (Task, error) {
 		&i.Title,
 		&i.Description,
 		&i.TaskType,
+		&i.VerificationType,
 		&i.Config,
 		&i.Points,
 		&i.IsRequired,
-		&i.SortOrder,
+		&i.DisplayOrder,
+		&i.DeletedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -107,7 +101,9 @@ func (q *Queries) GetTask(ctx context.Context, id uuid.UUID) (Task, error) {
 }
 
 const listTasksByCampaign = `-- name: ListTasksByCampaign :many
-SELECT id, campaign_id, title, description, task_type, config, points, is_required, sort_order, created_at, updated_at FROM tasks WHERE campaign_id = $1 ORDER BY sort_order ASC
+SELECT id, campaign_id, title, description, task_type, verification_type, config, points, is_required, display_order, deleted_at, created_at, updated_at FROM tasks
+WHERE campaign_id = $1 AND deleted_at IS NULL
+ORDER BY display_order ASC
 `
 
 func (q *Queries) ListTasksByCampaign(ctx context.Context, campaignID uuid.UUID) ([]Task, error) {
@@ -125,10 +121,12 @@ func (q *Queries) ListTasksByCampaign(ctx context.Context, campaignID uuid.UUID)
 			&i.Title,
 			&i.Description,
 			&i.TaskType,
+			&i.VerificationType,
 			&i.Config,
 			&i.Points,
 			&i.IsRequired,
-			&i.SortOrder,
+			&i.DisplayOrder,
+			&i.DeletedAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -143,4 +141,72 @@ func (q *Queries) ListTasksByCampaign(ctx context.Context, campaignID uuid.UUID)
 		return nil, err
 	}
 	return items, nil
+}
+
+const softDeleteTask = `-- name: SoftDeleteTask :exec
+UPDATE tasks
+SET deleted_at = NOW()
+WHERE id = $1 AND campaign_id = $2
+`
+
+type SoftDeleteTaskParams struct {
+	ID         uuid.UUID `json:"id"`
+	CampaignID uuid.UUID `json:"campaign_id"`
+}
+
+func (q *Queries) SoftDeleteTask(ctx context.Context, arg SoftDeleteTaskParams) error {
+	_, err := q.db.ExecContext(ctx, softDeleteTask, arg.ID, arg.CampaignID)
+	return err
+}
+
+const updateTask = `-- name: UpdateTask :one
+UPDATE tasks SET
+    title             = COALESCE($2, title),   -- COALESCE : evaluates a list of arguments and returns first non NULL value
+    description       = COALESCE($3, description),
+    config            = COALESCE($4, config),
+    points            = COALESCE($5, points),
+    is_required       = COALESCE($6, is_required),
+    display_order     = COALESCE($7, display_order),
+    updated_at        = NOW()
+WHERE id = $1 AND deleted_at IS NULL
+RETURNING id, campaign_id, title, description, task_type, verification_type, config, points, is_required, display_order, deleted_at, created_at, updated_at
+`
+
+type UpdateTaskParams struct {
+	ID           uuid.UUID       `json:"id"`
+	Title        string          `json:"title"`
+	Description  sql.NullString  `json:"description"`
+	Config       json.RawMessage `json:"config"`
+	Points       int32           `json:"points"`
+	IsRequired   bool            `json:"is_required"`
+	DisplayOrder int32           `json:"display_order"`
+}
+
+func (q *Queries) UpdateTask(ctx context.Context, arg UpdateTaskParams) (Task, error) {
+	row := q.db.QueryRowContext(ctx, updateTask,
+		arg.ID,
+		arg.Title,
+		arg.Description,
+		arg.Config,
+		arg.Points,
+		arg.IsRequired,
+		arg.DisplayOrder,
+	)
+	var i Task
+	err := row.Scan(
+		&i.ID,
+		&i.CampaignID,
+		&i.Title,
+		&i.Description,
+		&i.TaskType,
+		&i.VerificationType,
+		&i.Config,
+		&i.Points,
+		&i.IsRequired,
+		&i.DisplayOrder,
+		&i.DeletedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }

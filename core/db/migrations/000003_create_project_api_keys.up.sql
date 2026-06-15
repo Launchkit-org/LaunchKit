@@ -1,7 +1,7 @@
 -- Secure Storage for Webhook API Keys
 CREATE TABLE  project_api_keys (
     id                  UUID            PRIMARY KEY DEFAULT gen_random_uuid(),
-    organization_id     UUID            NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    project_id     UUID            NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     name                VARCHAR(50)     NOT NULL DEFAULT 'Default Key',
     key_hash            VARCHAR(64)     NOT NULL UNIQUE,
     key_hint            VARCHAR(8)      NOT NULL,
@@ -10,4 +10,4 @@ CREATE TABLE  project_api_keys (
     last_used_at        TIMESTAMPTZ
 );
 
-CREATE INDEX idx_api_keys_hash ON organization_api_keys(key_hash);
+CREATE INDEX idx_api_keys_hash ON project_api_keys(key_hash);

@@ -1,3 +1,4 @@
+-- name: CreateCampaign :one
 INSERT INTO campaigns (
     project_id, title, slug, description, banner_url,
     chain, token_contract, token_symbol, token_decimals,

@@ -9,105 +9,179 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"time"
 
 	"github.com/google/uuid"
 )
 
+const countVerifiedTasksForUser = `-- name: CountVerifiedTasksForUser :one
+SELECT COUNT(*) FROM task_completions
+WHERE campaign_id = $1 AND user_id = $2 AND status = 'verified'
+`
+
+type CountVerifiedTasksForUserParams struct {
+	CampaignID uuid.UUID `json:"campaign_id"`
+	UserID     uuid.UUID `json:"user_id"`
+}
+
+func (q *Queries) CountVerifiedTasksForUser(ctx context.Context, arg CountVerifiedTasksForUserParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countVerifiedTasksForUser, arg.CampaignID, arg.UserID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const getCompletion = `-- name: GetCompletion :one
-SELECT id, campaign_id, task_id, wallet_address, status, proof, failure_reason, verified_at, created_at, updated_at FROM task_completions
-WHERE task_id = $1 AND wallet_address = $2
+SELECT id, user_id, task_id, campaign_id, status, points_earned, proof, completed_at FROM task_completions
+WHERE user_id = $1 AND task_id = $2
 `
 
 type GetCompletionParams struct {
-	TaskID        uuid.UUID `json:"task_id"`
-	WalletAddress string    `json:"wallet_address"`
+	UserID uuid.UUID `json:"user_id"`
+	TaskID uuid.UUID `json:"task_id"`
 }
 
 func (q *Queries) GetCompletion(ctx context.Context, arg GetCompletionParams) (TaskCompletion, error) {
-	row := q.db.QueryRowContext(ctx, getCompletion, arg.TaskID, arg.WalletAddress)
+	row := q.db.QueryRowContext(ctx, getCompletion, arg.UserID, arg.TaskID)
 	var i TaskCompletion
 	err := row.Scan(
 		&i.ID,
-		&i.CampaignID,
+		&i.UserID,
 		&i.TaskID,
-		&i.WalletAddress,
+		&i.CampaignID,
 		&i.Status,
+		&i.PointsEarned,
 		&i.Proof,
-		&i.FailureReason,
-		&i.VerifiedAt,
-		&i.CreatedAt,
-		&i.UpdatedAt,
+		&i.CompletedAt,
 	)
 	return i, err
 }
 
 const getCompletionSpeedSeconds = `-- name: GetCompletionSpeedSeconds :one
-SELECT EXTRACT(EPOCH FROM (MAX(verified_at) - MIN(verified_at)))::INT AS seconds
+SELECT EXTRACT(EPOCH FROM (MAX(completed_at) - MIN(completed_at)))::INT AS seconds
 FROM task_completions
-WHERE campaign_id = $1 AND wallet_address = $2 AND status = 'verified'
+WHERE campaign_id = $1 AND user_id = $2 AND status = 'verified'
 `
 
 type GetCompletionSpeedSecondsParams struct {
-	CampaignID    uuid.UUID `json:"campaign_id"`
-	WalletAddress string    `json:"wallet_address"`
+	CampaignID uuid.UUID `json:"campaign_id"`
+	UserID     uuid.UUID `json:"user_id"`
 }
 
 func (q *Queries) GetCompletionSpeedSeconds(ctx context.Context, arg GetCompletionSpeedSecondsParams) (int32, error) {
-	row := q.db.QueryRowContext(ctx, getCompletionSpeedSeconds, arg.CampaignID, arg.WalletAddress)
+	row := q.db.QueryRowContext(ctx, getCompletionSpeedSeconds, arg.CampaignID, arg.UserID)
 	var seconds int32
 	err := row.Scan(&seconds)
 	return seconds, err
 }
 
-const listCompletionsByWalletAndCampaign = `-- name: ListCompletionsByWalletAndCampaign :many
-SELECT tc.id, tc.campaign_id, tc.task_id, tc.wallet_address, tc.status, tc.proof, tc.failure_reason, tc.verified_at, tc.created_at, tc.updated_at, t.points, t.is_required FROM task_completions tc
-JOIN tasks t ON t.id = tc.task_id
-WHERE tc.campaign_id = $1 AND tc.wallet_address = $2
+const getUserPointsForCampaign = `-- name: GetUserPointsForCampaign :one
+SELECT COALESCE(SUM(points_earned), 0)::INT AS total_points
+FROM task_completions
+WHERE campaign_id = $1 AND user_id = $2 AND status = 'verified'
 `
 
-type ListCompletionsByWalletAndCampaignParams struct {
-	CampaignID    uuid.UUID `json:"campaign_id"`
-	WalletAddress string    `json:"wallet_address"`
+type GetUserPointsForCampaignParams struct {
+	CampaignID uuid.UUID `json:"campaign_id"`
+	UserID     uuid.UUID `json:"user_id"`
 }
 
-type ListCompletionsByWalletAndCampaignRow struct {
-	ID            uuid.UUID        `json:"id"`
-	CampaignID    uuid.UUID        `json:"campaign_id"`
-	TaskID        uuid.UUID        `json:"task_id"`
-	WalletAddress string           `json:"wallet_address"`
-	Status        CompletionStatus `json:"status"`
-	Proof         json.RawMessage  `json:"proof"`
-	FailureReason sql.NullString   `json:"failure_reason"`
-	VerifiedAt    sql.NullTime     `json:"verified_at"`
-	CreatedAt     time.Time        `json:"created_at"`
-	UpdatedAt     time.Time        `json:"updated_at"`
-	Points        int32            `json:"points"`
-	IsRequired    bool             `json:"is_required"`
+func (q *Queries) GetUserPointsForCampaign(ctx context.Context, arg GetUserPointsForCampaignParams) (int32, error) {
+	row := q.db.QueryRowContext(ctx, getUserPointsForCampaign, arg.CampaignID, arg.UserID)
+	var total_points int32
+	err := row.Scan(&total_points)
+	return total_points, err
 }
 
-func (q *Queries) ListCompletionsByWalletAndCampaign(ctx context.Context, arg ListCompletionsByWalletAndCampaignParams) ([]ListCompletionsByWalletAndCampaignRow, error) {
-	rows, err := q.db.QueryContext(ctx, listCompletionsByWalletAndCampaign, arg.CampaignID, arg.WalletAddress)
+const listCampaignLeaderboard = `-- name: ListCampaignLeaderboard :many
+SELECT user_id, SUM(points_earned)::INT AS total_points
+FROM task_completions
+WHERE campaign_id = $1 AND status = 'verified'
+GROUP BY user_id
+ORDER BY total_points DESC
+LIMIT $2 OFFSET $3
+`
+
+type ListCampaignLeaderboardParams struct {
+	CampaignID uuid.UUID `json:"campaign_id"`
+	Limit      int32     `json:"limit"`
+	Offset     int32     `json:"offset"`
+}
+
+type ListCampaignLeaderboardRow struct {
+	UserID      uuid.UUID `json:"user_id"`
+	TotalPoints int32     `json:"total_points"`
+}
+
+func (q *Queries) ListCampaignLeaderboard(ctx context.Context, arg ListCampaignLeaderboardParams) ([]ListCampaignLeaderboardRow, error) {
+	rows, err := q.db.QueryContext(ctx, listCampaignLeaderboard, arg.CampaignID, arg.Limit, arg.Offset)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ListCompletionsByWalletAndCampaignRow{}
+	items := []ListCampaignLeaderboardRow{}
 	for rows.Next() {
-		var i ListCompletionsByWalletAndCampaignRow
+		var i ListCampaignLeaderboardRow
+		if err := rows.Scan(&i.UserID, &i.TotalPoints); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listCompletionsByUserAndCampaign = `-- name: ListCompletionsByUserAndCampaign :many
+SELECT tc.id, tc.user_id, tc.task_id, tc.campaign_id, tc.status, tc.points_earned, tc.proof, tc.completed_at, t.points AS task_points, t.is_required, t.title AS task_title
+FROM task_completions tc
+JOIN tasks t ON t.id = tc.task_id
+WHERE tc.campaign_id = $1 AND tc.user_id = $2
+`
+
+type ListCompletionsByUserAndCampaignParams struct {
+	CampaignID uuid.UUID `json:"campaign_id"`
+	UserID     uuid.UUID `json:"user_id"`
+}
+
+type ListCompletionsByUserAndCampaignRow struct {
+	ID           uuid.UUID        `json:"id"`
+	UserID       uuid.UUID        `json:"user_id"`
+	TaskID       uuid.UUID        `json:"task_id"`
+	CampaignID   uuid.UUID        `json:"campaign_id"`
+	Status       CompletionStatus `json:"status"`
+	PointsEarned int32            `json:"points_earned"`
+	Proof        json.RawMessage  `json:"proof"`
+	CompletedAt  sql.NullTime     `json:"completed_at"`
+	TaskPoints   int32            `json:"task_points"`
+	IsRequired   bool             `json:"is_required"`
+	TaskTitle    string           `json:"task_title"`
+}
+
+func (q *Queries) ListCompletionsByUserAndCampaign(ctx context.Context, arg ListCompletionsByUserAndCampaignParams) ([]ListCompletionsByUserAndCampaignRow, error) {
+	rows, err := q.db.QueryContext(ctx, listCompletionsByUserAndCampaign, arg.CampaignID, arg.UserID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListCompletionsByUserAndCampaignRow{}
+	for rows.Next() {
+		var i ListCompletionsByUserAndCampaignRow
 		if err := rows.Scan(
 			&i.ID,
-			&i.CampaignID,
+			&i.UserID,
 			&i.TaskID,
-			&i.WalletAddress,
+			&i.CampaignID,
 			&i.Status,
+			&i.PointsEarned,
 			&i.Proof,
-			&i.FailureReason,
-			&i.VerifiedAt,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-			&i.Points,
+			&i.CompletedAt,
+			&i.TaskPoints,
 			&i.IsRequired,
+			&i.TaskTitle,
 		); err != nil {
 			return nil, err
 		}
@@ -123,45 +197,41 @@ func (q *Queries) ListCompletionsByWalletAndCampaign(ctx context.Context, arg Li
 }
 
 const upsertCompletion = `-- name: UpsertCompletion :one
-INSERT INTO task_completions (campaign_id, task_id, wallet_address, status, proof, failure_reason, verified_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
-ON CONFLICT (task_id, wallet_address) DO UPDATE
-    SET status = $4, proof = $5, failure_reason = $6, verified_at = $7, updated_at = NOW()
-RETURNING id, campaign_id, task_id, wallet_address, status, proof, failure_reason, verified_at, created_at, updated_at
+INSERT INTO task_completions (user_id, task_id, campaign_id, status, points_earned, proof)
+VALUES ($1, $2, $3, $4, $5, $6)
+ON CONFLICT (user_id, task_id) DO UPDATE
+    SET status = $4, points_earned = $5, proof = $6, completed_at = NOW()
+RETURNING id, user_id, task_id, campaign_id, status, points_earned, proof, completed_at
 `
 
 type UpsertCompletionParams struct {
-	CampaignID    uuid.UUID        `json:"campaign_id"`
-	TaskID        uuid.UUID        `json:"task_id"`
-	WalletAddress string           `json:"wallet_address"`
-	Status        CompletionStatus `json:"status"`
-	Proof         json.RawMessage  `json:"proof"`
-	FailureReason sql.NullString   `json:"failure_reason"`
-	VerifiedAt    sql.NullTime     `json:"verified_at"`
+	UserID       uuid.UUID        `json:"user_id"`
+	TaskID       uuid.UUID        `json:"task_id"`
+	CampaignID   uuid.UUID        `json:"campaign_id"`
+	Status       CompletionStatus `json:"status"`
+	PointsEarned int32            `json:"points_earned"`
+	Proof        json.RawMessage  `json:"proof"`
 }
 
 func (q *Queries) UpsertCompletion(ctx context.Context, arg UpsertCompletionParams) (TaskCompletion, error) {
 	row := q.db.QueryRowContext(ctx, upsertCompletion,
-		arg.CampaignID,
+		arg.UserID,
 		arg.TaskID,
-		arg.WalletAddress,
+		arg.CampaignID,
 		arg.Status,
+		arg.PointsEarned,
 		arg.Proof,
-		arg.FailureReason,
-		arg.VerifiedAt,
 	)
 	var i TaskCompletion
 	err := row.Scan(
 		&i.ID,
-		&i.CampaignID,
+		&i.UserID,
 		&i.TaskID,
-		&i.WalletAddress,
+		&i.CampaignID,
 		&i.Status,
+		&i.PointsEarned,
 		&i.Proof,
-		&i.FailureReason,
-		&i.VerifiedAt,
-		&i.CreatedAt,
-		&i.UpdatedAt,
+		&i.CompletedAt,
 	)
 	return i, err
 }

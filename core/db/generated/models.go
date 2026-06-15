@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/sqlc-dev/pqtype"
 )
 
 type CampaignStatus string
@@ -23,6 +24,7 @@ const (
 	CampaignStatusEnded        CampaignStatus = "ended"
 	CampaignStatusDistributing CampaignStatus = "distributing"
 	CampaignStatusCompleted    CampaignStatus = "completed"
+	CampaignStatusCancelled    CampaignStatus = "cancelled"
 )
 
 func (e *CampaignStatus) Scan(src interface{}) error {
@@ -60,56 +62,12 @@ func (ns NullCampaignStatus) Value() (driver.Value, error) {
 	return string(ns.CampaignStatus), nil
 }
 
-type ClaimStatus string
-
-const (
-	ClaimStatusUnclaimed ClaimStatus = "unclaimed"
-	ClaimStatusPending   ClaimStatus = "pending"
-	ClaimStatusClaimed   ClaimStatus = "claimed"
-	ClaimStatusFailed    ClaimStatus = "failed"
-)
-
-func (e *ClaimStatus) Scan(src interface{}) error {
-	switch s := src.(type) {
-	case []byte:
-		*e = ClaimStatus(s)
-	case string:
-		*e = ClaimStatus(s)
-	default:
-		return fmt.Errorf("unsupported scan type for ClaimStatus: %T", src)
-	}
-	return nil
-}
-
-type NullClaimStatus struct {
-	ClaimStatus ClaimStatus `json:"claim_status"`
-	Valid       bool        `json:"valid"` // Valid is true if ClaimStatus is not NULL
-}
-
-// Scan implements the Scanner interface.
-func (ns *NullClaimStatus) Scan(value interface{}) error {
-	if value == nil {
-		ns.ClaimStatus, ns.Valid = "", false
-		return nil
-	}
-	ns.Valid = true
-	return ns.ClaimStatus.Scan(value)
-}
-
-// Value implements the driver Valuer interface.
-func (ns NullClaimStatus) Value() (driver.Value, error) {
-	if !ns.Valid {
-		return nil, nil
-	}
-	return string(ns.ClaimStatus), nil
-}
-
 type CompletionStatus string
 
 const (
 	CompletionStatusPending  CompletionStatus = "pending"
 	CompletionStatusVerified CompletionStatus = "verified"
-	CompletionStatusFailed   CompletionStatus = "failed"
+	CompletionStatusRejected CompletionStatus = "rejected"
 )
 
 func (e *CompletionStatus) Scan(src interface{}) error {
@@ -232,121 +190,152 @@ func (ns NullVestingType) Value() (driver.Value, error) {
 	return string(ns.VestingType), nil
 }
 
+type AuditLog struct {
+	ID         uuid.UUID             `json:"id"`
+	ProjectID  uuid.UUID             `json:"project_id"`
+	UserID     uuid.NullUUID         `json:"user_id"`
+	Action     string                `json:"action"`
+	EntityType string                `json:"entity_type"`
+	EntityID   uuid.NullUUID         `json:"entity_id"`
+	Changes    pqtype.NullRawMessage `json:"changes"`
+	IpAddress  sql.NullString        `json:"ip_address"`
+	CreatedAt  time.Time             `json:"created_at"`
+}
+
 type AuthNonce struct {
-	WalletAddress string    `json:"wallet_address"`
-	Nonce         string    `json:"nonce"`
-	ExpiresAt     time.Time `json:"expires_at"`
-	CreatedAt     time.Time `json:"created_at"`
+	WalletAddress string       `json:"wallet_address"`
+	Nonce         string       `json:"nonce"`
+	ExpiresAt     time.Time    `json:"expires_at"`
+	CreatedAt     sql.NullTime `json:"created_at"`
 }
 
 type Campaign struct {
 	ID               uuid.UUID       `json:"id"`
 	ProjectID        uuid.UUID       `json:"project_id"`
-	Name             string          `json:"name"`
+	Title            string          `json:"title"`
+	Slug             string          `json:"slug"`
 	Description      sql.NullString  `json:"description"`
 	BannerUrl        sql.NullString  `json:"banner_url"`
-	Status           CampaignStatus  `json:"status"`
 	Chain            string          `json:"chain"`
 	TokenContract    string          `json:"token_contract"`
+	TokenSymbol      sql.NullString  `json:"token_symbol"`
+	TokenDecimals    sql.NullInt32   `json:"token_decimals"`
 	TotalAllocation  string          `json:"total_allocation"`
+	ClaimedAmount    string          `json:"claimed_amount"`
 	RewardType       RewardType      `json:"reward_type"`
 	RewardConfig     json.RawMessage `json:"reward_config"`
 	EligibilityRules json.RawMessage `json:"eligibility_rules"`
-	VestingType      VestingType     `json:"vesting_type"`
-	VestingDays      sql.NullInt32   `json:"vesting_days"`
+	StartDate        time.Time       `json:"start_date"`
+	EndDate          time.Time       `json:"end_date"`
 	ClaimWindowDays  int32           `json:"claim_window_days"`
+	VestingType      VestingType     `json:"vesting_type"`
+	VestingDays      int32           `json:"vesting_days"`
 	GasSponsored     bool            `json:"gas_sponsored"`
-	StartsAt         time.Time       `json:"starts_at"`
-	EndsAt           time.Time       `json:"ends_at"`
 	MerkleRoot       sql.NullString  `json:"merkle_root"`
-	ContractAddress  sql.NullString  `json:"contract_address"`
-	CreatedAt        time.Time       `json:"created_at"`
-	UpdatedAt        time.Time       `json:"updated_at"`
+	ClaimContract    sql.NullString  `json:"claim_contract"`
+	DeployTxHash     sql.NullString  `json:"deploy_tx_hash"`
+	Status           CampaignStatus  `json:"status"`
+	FinalizedAt      sql.NullTime    `json:"finalized_at"`
+	CompletedAt      sql.NullTime    `json:"completed_at"`
+	CancelledAt      sql.NullTime    `json:"cancelled_at"`
+	DeletedAt        sql.NullTime    `json:"deleted_at"`
+	CreatedAt        sql.NullTime    `json:"created_at"`
+	UpdatedAt        sql.NullTime    `json:"updated_at"`
 }
 
-type Eligibility struct {
-	ID            uuid.UUID       `json:"id"`
-	CampaignID    uuid.UUID       `json:"campaign_id"`
-	WalletAddress string          `json:"wallet_address"`
-	IsEligible    bool            `json:"is_eligible"`
-	TotalPoints   int32           `json:"total_points"`
-	TokenAmount   string          `json:"token_amount"`
-	MerkleProof   json.RawMessage `json:"merkle_proof"`
-	ClaimStatus   ClaimStatus     `json:"claim_status"`
-	ClaimTxHash   sql.NullString  `json:"claim_tx_hash"`
-	ClaimedAt     sql.NullTime    `json:"claimed_at"`
-	ComputedAt    time.Time       `json:"computed_at"`
+type CampaignAnalyticsSnapshot struct {
+	ID                 uuid.UUID      `json:"id"`
+	CampaignID         uuid.UUID      `json:"campaign_id"`
+	ParticipantCount   sql.NullInt32  `json:"participant_count"`
+	TaskCompletionRate sql.NullString `json:"task_completion_rate"`
+	SybilFlaggedCount  sql.NullInt32  `json:"sybil_flagged_count"`
+	ClaimRate          sql.NullString `json:"claim_rate"`
+	TokensClaimed      sql.NullString `json:"tokens_claimed"`
+	SnapshotAt         sql.NullTime   `json:"snapshot_at"`
 }
 
 type Project struct {
-	ID             uuid.UUID      `json:"id"`
-	OwnerAddress   string         `json:"owner_address"`
-	Name           string         `json:"name"`
-	Description    sql.NullString `json:"description"`
-	LogoUrl        sql.NullString `json:"logo_url"`
-	WebsiteUrl     sql.NullString `json:"website_url"`
-	TwitterUrl     sql.NullString `json:"twitter_url"`
-	DiscordUrl     sql.NullString `json:"discord_url"`
-	TokenContract  string         `json:"token_contract"`
-	Chain          string         `json:"chain"`
-	TreasuryWallet string         `json:"treasury_wallet"`
-	ApiKey         sql.NullString `json:"api_key"`
-	CreatedAt      time.Time      `json:"created_at"`
-	UpdatedAt      time.Time      `json:"updated_at"`
+	ID                uuid.UUID      `json:"id"`
+	CompanyName       string         `json:"company_name"`
+	EmployeeCount     sql.NullString `json:"employee_count"`
+	DiscoverySource   sql.NullString `json:"discovery_source"`
+	Name              string         `json:"name"`
+	Slug              string         `json:"slug"`
+	Description       sql.NullString `json:"description"`
+	LogoUrl           sql.NullString `json:"logo_url"`
+	WebsiteUrl        sql.NullString `json:"website_url"`
+	TwitterHandle     sql.NullString `json:"twitter_handle"`
+	DiscordInviteLink sql.NullString `json:"discord_invite_link"`
+	TreasuryWallet    string         `json:"treasury_wallet"`
+	Blockchain        string         `json:"blockchain"`
+	Environment       string         `json:"environment"`
+	TokenAddress      string         `json:"token_address"`
+	TokenName         sql.NullString `json:"token_name"`
+	TokenSymbol       sql.NullString `json:"token_symbol"`
+	CreatedAt         time.Time      `json:"created_at"`
+	UpdatedAt         time.Time      `json:"updated_at"`
 }
 
-type SybilScore struct {
-	ID                 uuid.UUID `json:"id"`
-	CampaignID         uuid.UUID `json:"campaign_id"`
-	WalletAddress      string    `json:"wallet_address"`
-	WalletAgeScore     int32     `json:"wallet_age_score"`
-	TxCountScore       int32     `json:"tx_count_score"`
-	SpeedScore         int32     `json:"speed_score"`
-	PassportScore      int32     `json:"passport_score"`
-	FundingSourceScore int32     `json:"funding_source_score"`
-	IpClusterScore     int32     `json:"ip_cluster_score"`
-	TotalScore         int32     `json:"total_score"`
-	Flags              []string  `json:"flags"`
-	IsEligible         bool      `json:"is_eligible"`
-	ComputedAt         time.Time `json:"computed_at"`
+type ProjectApiKey struct {
+	ID         uuid.UUID    `json:"id"`
+	ProjectID  uuid.UUID    `json:"project_id"`
+	Name       string       `json:"name"`
+	KeyHash    string       `json:"key_hash"`
+	KeyHint    string       `json:"key_hint"`
+	IsActive   bool         `json:"is_active"`
+	CreatedAt  time.Time    `json:"created_at"`
+	LastUsedAt sql.NullTime `json:"last_used_at"`
+}
+
+type ProjectMember struct {
+	ID        uuid.UUID `json:"id"`
+	ProjectID uuid.UUID `json:"project_id"`
+	UserID    uuid.UUID `json:"user_id"`
+	Role      string    `json:"role"`
+	Status    string    `json:"status"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 type Task struct {
-	ID          uuid.UUID       `json:"id"`
-	CampaignID  uuid.UUID       `json:"campaign_id"`
-	Title       string          `json:"title"`
-	Description sql.NullString  `json:"description"`
-	TaskType    string          `json:"task_type"`
-	Config      json.RawMessage `json:"config"`
-	Points      int32           `json:"points"`
-	IsRequired  bool            `json:"is_required"`
-	SortOrder   int32           `json:"sort_order"`
-	CreatedAt   time.Time       `json:"created_at"`
-	UpdatedAt   time.Time       `json:"updated_at"`
+	ID               uuid.UUID       `json:"id"`
+	CampaignID       uuid.UUID       `json:"campaign_id"`
+	Title            string          `json:"title"`
+	Description      sql.NullString  `json:"description"`
+	TaskType         string          `json:"task_type"`
+	VerificationType string          `json:"verification_type"`
+	Config           json.RawMessage `json:"config"`
+	Points           int32           `json:"points"`
+	IsRequired       bool            `json:"is_required"`
+	DisplayOrder     int32           `json:"display_order"`
+	DeletedAt        sql.NullTime    `json:"deleted_at"`
+	CreatedAt        sql.NullTime    `json:"created_at"`
+	UpdatedAt        sql.NullTime    `json:"updated_at"`
 }
 
 type TaskCompletion struct {
-	ID            uuid.UUID        `json:"id"`
-	CampaignID    uuid.UUID        `json:"campaign_id"`
-	TaskID        uuid.UUID        `json:"task_id"`
-	WalletAddress string           `json:"wallet_address"`
-	Status        CompletionStatus `json:"status"`
-	Proof         json.RawMessage  `json:"proof"`
-	FailureReason sql.NullString   `json:"failure_reason"`
-	VerifiedAt    sql.NullTime     `json:"verified_at"`
-	CreatedAt     time.Time        `json:"created_at"`
-	UpdatedAt     time.Time        `json:"updated_at"`
+	ID           uuid.UUID        `json:"id"`
+	UserID       uuid.UUID        `json:"user_id"`
+	TaskID       uuid.UUID        `json:"task_id"`
+	CampaignID   uuid.UUID        `json:"campaign_id"`
+	Status       CompletionStatus `json:"status"`
+	PointsEarned int32            `json:"points_earned"`
+	Proof        json.RawMessage  `json:"proof"`
+	CompletedAt  sql.NullTime     `json:"completed_at"`
 }
 
 type User struct {
+	ID            uuid.UUID      `json:"id"`
 	WalletAddress string         `json:"wallet_address"`
+	EnsName       sql.NullString `json:"ens_name"`
 	DisplayName   sql.NullString `json:"display_name"`
-	Bio           sql.NullString `json:"bio"`
 	AvatarUrl     sql.NullString `json:"avatar_url"`
 	TwitterID     sql.NullString `json:"twitter_id"`
 	TwitterHandle sql.NullString `json:"twitter_handle"`
 	DiscordID     sql.NullString `json:"discord_id"`
 	DiscordHandle sql.NullString `json:"discord_handle"`
+	DiscordToken  sql.NullString `json:"discord_token"`
 	CreatedAt     time.Time      `json:"created_at"`
 	UpdatedAt     time.Time      `json:"updated_at"`
+	LastSeen      time.Time      `json:"last_seen"`
 }
