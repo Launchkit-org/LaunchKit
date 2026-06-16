@@ -31,28 +31,27 @@ func DecryptToMap(encrypted string, secretKey string) (map[string]string, error)
 	return data, nil
 }
 
-func Encrypt(text []byte,key string)(string,error){
+func Encrypt(text []byte, key string) (string, error) {
 
-	secretkey:=[]byte(key)
-	if len(secretkey)!=32{
-		return "",errors.New("encryption key must be 32 bytes longg")
+	secretkey := []byte(key)
+	if len(secretkey) != 32 {
+		return "", errors.New("encryption key must be 32 bytes long")
 	}
-	block,err:=aes.NewCipher(secretkey)
-	if err!=nil{
-		return "",err
+	block, err := aes.NewCipher(secretkey)
+	if err != nil {
+		return "", err
 	}
-	aesGM,err:=cipher.NewGCM(block)
-	if err!=nil{
-		return "",err
+	aesGM, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
 	}
-	nonce:=make([]byte,aesGM.NonceSize())
-	if _,err:=io.ReadFull(rand.Reader,nonce);err!=nil{
-		return "",nil
+	nonce := make([]byte, aesGM.NonceSize())
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+		return "", err
 	}
-	cipherText:= aesGM.Seal(nonce,nonce,text,nil)
+	cipherText := aesGM.Seal(nonce, nonce, text, nil)
 	return base64.StdEncoding.EncodeToString(cipherText), nil
 }
-
 
 func Decrypt(cipherText string, Key string) ([]byte, error) {
 	secretKey := []byte(Key)
@@ -81,5 +80,5 @@ func Decrypt(cipherText string, Key string) ([]byte, error) {
 		return nil, err
 	}
 
-	return plaintext, nil
+	return plaintext, err
 }

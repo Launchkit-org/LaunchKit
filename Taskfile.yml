@@ -1,0 +1,107 @@
+version: "3"
+
+dotenv: [".env"]
+
+vars:
+  MIGRATIONS_DIR: '{{.MIGRATIONS_DIR | default "db/migrations"}}'
+  DB_DSN: "postgres://{{.POSTGRES_USER}}:{{.POSTGRES_PASSWORD}}@{{.POSTGRES_HOST}}:{{.POSTGRES_PORT}}/{{.POSTGRES_DB}}?sslmode=disable"
+  COMPOSE_CMD: "docker compose -f deployments/docker-compose.yml --project-directory ."
+  COMPOSE_FILE: deployments/docker-compose.yml
+
+tasks:
+  migrate-status:
+    desc: Dump the migration status for the current database
+    cmds:
+      - goose -dir {{.MIGRATIONS_DIR}} postgres "{{.DB_DSN}}" status
+
+  migrate-up:
+    desc: Migrate the database to the most recent version available
+    cmds:
+      - goose -dir {{.MIGRATIONS_DIR}} postgres "{{.DB_DSN}}" up
+
+  migrate-down:
+    desc: Roll back the latest migration
+    cmds:
+      - goose -dir {{.MIGRATIONS_DIR}} postgres "{{.DB_DSN}}" down
+
+  migrate-redo:
+    desc: Re-run the latest migration (roll back and re-apply)
+    cmds:
+      - goose -dir {{.MIGRATIONS_DIR}} postgres "{{.DB_DSN}}" redo
+
+  migrate-create:
+    desc: Create a new timestamp-based SQL migration. Usage - task migrate-create -- <migration_name>
+    cmds:
+      - goose -dir {{.MIGRATIONS_DIR}} create {{.CLI_ARGS}} sql
+
+  up:
+    desc: Start all services in Docker Compose (detached mode)
+    cmds:
+      - "{{.COMPOSE_CMD}} up -d"
+
+  down:
+    desc: Stop all services in Docker Compose and clean up volumes/orphans
+    cmds:
+      - "{{.COMPOSE_CMD}} down --volumes --remove-orphans"
+
+  logs:
+    desc: View and follow logs from all running containers
+    cmds:
+      - "{{.COMPOSE_CMD}} logs -f"
+
+  build:
+    desc: Build or rebuild Docker services
+    cmds:
+      - "{{.COMPOSE_CMD}} build"
+
+  gen-sqlc:
+    desc: "Generate SQLC code from anywhere"
+    dir: db
+    cmds:
+      - sqlc generate
+
+  start:
+    desc: Full boot sequence (Infra -> Migrate -> Logs)
+    cmds:
+      - task: up
+      - echo "⏳ Waiting for database to initialize..."
+      - task: migrate-up
+      - echo "🚀 System live. Tailing backend logs..."
+      - "{{.COMPOSE_CMD}} logs -f backend"
+
+  tidy:
+    desc: Run go mod tidy on a specific module or all. Usage - task tidy -- [core|db|gateway|shared]
+    cmds:
+      - task: tidy-{{.CLI_ARGS | default "all"}}
+
+  tidy-all:
+    internal: true
+    cmds:
+      - task: tidy-core
+      - task: tidy-db
+      - task: tidy-gateway
+      - task: tidy-shared
+
+  tidy-core:
+    internal: true
+    dir: core
+    cmds:
+      - go mod tidy
+
+  tidy-db:
+    internal: true
+    dir: db
+    cmds:
+      - go mod tidy
+
+  tidy-gateway:
+    internal: true
+    dir: gateway
+    cmds:
+      - go mod tidy
+
+  tidy-shared:
+    internal: true
+    dir: shared
+    cmds:
+      - go mod tidy

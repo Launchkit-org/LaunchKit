@@ -20,7 +20,7 @@ func Created(c fiber.Ctx, message string, data any) error {
 	})
 }
 
-func Accepted(c fiber.Ctx,message string,data any)error{
+func Accepted(c fiber.Ctx, message string, data any) error {
 	return c.Status(fiber.StatusAccepted).JSON(fiber.Map{
 		"success": true,
 		"message": message,
@@ -28,7 +28,7 @@ func Accepted(c fiber.Ctx,message string,data any)error{
 	})
 }
 
-func BadRequest(c fiber.Ctx, data any, message string) error {
+func BadRequest(c fiber.Ctx, message string, data any) error {
 	return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 		"success": false,
 		"data":    data,
@@ -66,7 +66,7 @@ func Conflict(c fiber.Ctx, message string) error {
 	})
 }
 
-func Forbidden(c fiber.Ctx, data any, message string) error {
+func Forbidden(c fiber.Ctx, message string, data any) error {
 	return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
 		"success": false,
 		"data":    data,
