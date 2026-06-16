@@ -7,31 +7,30 @@ import (
 )
 
 func Query2[A, B any](ctx context.Context,
-	fnA func( context.Context)(A,error),
-	fnB func( context.Context)(B,error),
-	) (A,B,error) {
-		var a A
-		var b B
-		
-		g,ctx:=errgroup.WithContext(ctx)
+	fnA func(context.Context) (A, error),
+	fnB func(context.Context) (B, error),
+) (A, B, error) {
+	var a A
+	var b B
 
-		g.Go(func() error{
-			var err error
-			a, err = fnA(ctx)
-			return err
-		})
+	g, ctx := errgroup.WithContext(ctx)
 
-		
-		g.Go(func() error{
-			var err error
-			b, err = fnB(ctx)
-			return err
-		})
+	g.Go(func() error {
+		var err error
+		a, err = fnA(ctx)
+		return err
+	})
 
-		if err:=g.Wait();err !=nil{
-			return a,b,err
-		}
-		return a,b,nil
+	g.Go(func() error {
+		var err error
+		b, err = fnB(ctx)
+		return err
+	})
+
+	if err := g.Wait(); err != nil {
+		return a, b, err
+	}
+	return a, b, nil
 }
 
 

@@ -13,7 +13,7 @@ import (
 type TokenPayload struct {
 	UserID      string
 	Role        string
-	WorkSpaceID string
+	WorkspaceID string
 	Version     int64
 	IsOnboarded bool
 }
@@ -50,19 +50,19 @@ type Config struct {
 
 func GenerateTokenPair(payload TokenPayload, cfg Config) (*TokenPair, error) {
 
-	accesExpiry := time.Duration(cfg.AccessExpiryMinutes) * time.Minute
+	accessExpiry := time.Duration(cfg.AccessExpiryMinutes) * time.Minute
 	accessClaims := &AccessClaims{
 		UserID:      payload.UserID,
 		Role:        payload.Role,
 		Version:     payload.Version,
-		WorkspaceID: payload.WorkSpaceID,
+		WorkspaceID: payload.WorkspaceID,
 		IsOnboarded: payload.IsOnboarded,
 		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(accesExpiry)),
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(accessExpiry)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 		},
 	}
-	accesToken, err := jwt.NewWithClaims(jwt.SigningMethodHS256, accessClaims).SignedString([]byte(cfg.AccessTokenSecret))
+	accessToken, err := jwt.NewWithClaims(jwt.SigningMethodHS256, accessClaims).SignedString([]byte(cfg.AccessTokenSecret))
 	if err != nil {
 		return nil, fmt.Errorf("error signing access token: %w", err)
 	}
@@ -86,7 +86,7 @@ func GenerateTokenPair(payload TokenPayload, cfg Config) (*TokenPair, error) {
 	}
 
 	return &TokenPair{
-		AccessToken:  accesToken,
+		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
 		TokenID:      tokenID,
 	}, nil

@@ -2,7 +2,6 @@ package config
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"time"
 
@@ -108,7 +107,7 @@ func LoadConfig() (*Config, error) {
 		return nil, err
 	}
 
-	log.Println("Loaded all configs ✅")
+	fmt.Println("Loaded all configs ✅")
 	return &cfg, nil
 }
 
