@@ -3,7 +3,6 @@ module github.com/Launchkit-org/LaunchKit/shared
 go 1.26.4
 
 require (
-	github.com/Launchkit-org/LaunchKit/gateway v0.0.0-20260618103334-5844307210ab
 	github.com/bytedance/sonic v1.15.2
 	github.com/go-playground/validator/v10 v10.30.3
 	github.com/gofiber/fiber/v3 v3.3.0
@@ -30,7 +29,6 @@ require (
 	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
 	github.com/gofiber/schema v1.7.1 // indirect
 	github.com/gofiber/utils/v2 v2.0.6 // indirect
-	github.com/golang-jwt/jwt/v5 v5.3.1 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/klauspost/compress v1.18.6 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.10 // indirect

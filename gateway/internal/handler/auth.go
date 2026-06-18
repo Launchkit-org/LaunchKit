@@ -63,7 +63,7 @@ func (h *AuthHandler) Verify(c fiber.Ctx) error {
 	}
 
 	// Generate JWT pair
-	jwtConfig := h.jwtCfg.ToJWTConfig()
+	jwtConfig := jwt.FromSharedConfig(h.jwtCfg)
 	pair, err := jwt.GenerateTokenPair(*tokenPayload, jwtConfig)
 	if err != nil {
 		h.logger.Error().Err(err).Str("userID", tokenPayload.UserID).Msg("failed to generate token pair")

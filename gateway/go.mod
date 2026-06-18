@@ -3,7 +3,6 @@ module github.com/Launchkit-org/LaunchKit/gateway
 go 1.26.4
 
 require (
-	github.com/Launchkit-org/LaunchKit/db v0.0.0-20260618103334-5844307210ab
 	github.com/Launchkit-org/LaunchKit/shared v0.0.0-00010101000000-000000000000
 	github.com/gofiber/fiber/v3 v3.3.0
 	github.com/golang-jwt/jwt/v5 v5.3.1
@@ -14,6 +13,8 @@ require (
 	github.com/spruceid/siwe-go v0.2.1
 	google.golang.org/grpc v1.81.1
 )
+
+require github.com/klauspost/compress v1.18.6 // indirect
 
 require (
 	github.com/andybalholm/brotli v1.2.1 // indirect
@@ -35,9 +36,6 @@ require (
 	github.com/gofiber/schema v1.7.1 // indirect
 	github.com/gofiber/utils/v2 v2.0.6 // indirect
 	github.com/holiman/uint256 v1.2.3 // indirect
-	github.com/jackc/pgpassfile v1.0.0 // indirect
-	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
-	github.com/klauspost/compress v1.18.6 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.10 // indirect
 	github.com/leodido/go-urn v1.4.0 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect

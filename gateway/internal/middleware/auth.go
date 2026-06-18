@@ -171,7 +171,8 @@ func (a *authMiddleware) silentRefresh(c fiber.Ctx) (*jwt.AccessClaims, error) {
 		IsOnboarded:   isOnboarded,
 		Version:       newVer,
 	}
-	jwtConfig := a.cfg.ToJWTConfig()
+
+	jwtConfig := jwt.FromSharedConfig(a.cfg)
 
 	pair, err := jwt.GenerateTokenPair(*payload, jwtConfig)
 	if err != nil {
