@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Launchkit-org/LaunchKit/shared/config"
 	"github.com/gofiber/fiber/v3"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
@@ -56,6 +57,15 @@ type Config struct {
 	RefreshTokenSecret  string
 	AccessExpiryMinutes int
 	RefreshExpiryHours  int
+}
+
+func FromSharedConfig(cfg *config.JwtConfig) Config {
+	return Config{
+		AccessTokenSecret:   cfg.AccessTokenSecret,
+		RefreshTokenSecret:  cfg.RefreshTokenSecret,
+		AccessExpiryMinutes: cfg.AccessExpiryMinutes,
+		RefreshExpiryHours:  cfg.RefreshExpiryHours,
+	}
 }
 
 //generate access and refresh tokens

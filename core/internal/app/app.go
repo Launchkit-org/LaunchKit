@@ -42,10 +42,10 @@ func StartApp(cfg *config.Config) (*App, error) {
 
 	// cfg.Core.HTTPAddr is a holdover name from the old REST stub — it's just
 	// a listen address (":8081") and works fine for gRPC's TCP listener too.
-	lis, err := net.Listen("tcp", cfg.Core.HTTPAddr)
+	lis, err := net.Listen("tcp", cfg.Core.GRPCAddr)
 	if err != nil {
 		pool.Close()
-		return nil, fmt.Errorf("listen on %s: %w", cfg.Core.HTTPAddr, err)
+		return nil, fmt.Errorf("listen on %s: %w", cfg.Core.GRPCAddr, err)
 	}
 
 	grpcServer := grpc.NewServer()
